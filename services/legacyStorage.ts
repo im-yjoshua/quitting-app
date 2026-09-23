@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// Day keys: single app-wide local YYYY-MM-DD helper (services/chronometerEngine.ts).
+import { getLocalDateKey } from './chronometerEngine';
 
 /**
  * @deprecated Legacy key/value storage (pre-envelope format).
@@ -197,17 +199,9 @@ export const DEFAULT_CHALLENGES: DailyChallenge[] = [
   { id: '4', title: 'Zero adult / triggering website visits', completed: false },
 ];
 
-export function getTodayDateString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export async function getChallenges(): Promise<DailyChallenge[]> {
   const challenges = await storage.get<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, DEFAULT_CHALLENGES);
-  const todayStr = getTodayDateString();
+  const todayStr = getLocalDateKey(Date.now());
 
   // Reset checkboxes if last completed date is not today
   let hasChanges = false;

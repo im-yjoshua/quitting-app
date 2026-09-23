@@ -11,6 +11,7 @@
  * not today is treated as empty and replaced by the next save.
  */
 import { loadEnvelopedObject, saveEnvelopedObject } from './storage';
+import { getLocalDateKey } from './chronometerEngine';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,13 +49,8 @@ export interface RitualCheckState {
   pm: Record<string, boolean>;
 }
 
-/** Local calendar day key — same convention as the rest of the app (Phase 0.6). */
-export function getLocalDayKey(date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+// Day keys: use the single app-wide local YYYY-MM-DD helper from
+// services/chronometerEngine.ts (same convention as Phase 0.6).
 
 // ---------------------------------------------------------------------------
 // Storage
@@ -77,7 +73,7 @@ export async function loadTodayRitualChecks(): Promise<RitualCheckState> {
     }
     return { am: {}, pm: {} };
   }
-  if (result.object.dayKey !== getLocalDayKey()) {
+  if (result.object.dayKey !== getLocalDateKey(Date.now())) {
     // Yesterday's checks stay yesterday.
     return { am: {}, pm: {} };
   }
@@ -91,7 +87,7 @@ let writeChain: Promise<boolean> = Promise.resolve(true);
 /** Persists checkbox state under today's local day key. Never throws. */
 export function saveRitualChecks(state: RitualCheckState): Promise<boolean> {
   const record: RitualDayChecks = {
-    dayKey: getLocalDayKey(),
+    dayKey: getLocalDateKey(Date.now()),
     am: { ...state.am },
     pm: { ...state.pm },
   };

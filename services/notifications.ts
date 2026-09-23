@@ -15,19 +15,6 @@ Notifications.setNotificationHandler({
 export const DAILY_ENCOURAGEMENT_IDENTIFIER = 'sovereign_daily_encouragement';
 
 /**
- * High-status, austere quotes matched to dopamine reset and habit discipline.
- */
-const ENCOURAGEMENT_ARCHIVE = [
-  'Master your impulses today. Your streak is compounding.',
-  'Dopamine receptors are actively recalibrating. Stand firm.',
-  'Clarity over cheap stimulation. Maintain the sovereign run.',
-  'Discipline is self-preservation. Keep your focus intact.',
-  'The urge will peak and dissipate. Breathe and hold ground.',
-  'Every hour clean builds neurochemical resilience. Stay sharp.',
-  'Honor your baseline. Do not negotiate with temporary cravings.',
-];
-
-/**
  * Request local push notification permissions securely on-device.
  * Zero external servers or tracking tokens are generated.
  */

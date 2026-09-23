@@ -81,3 +81,52 @@ export async function deleteJournalRecord(
   const updated = await deleteVoiceJournal(id);
   return updated.map(toJournalRecord);
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard card display shape
+// ---------------------------------------------------------------------------
+
+/**
+ * Display shape for the dashboard voice-journal card (components/utilities/
+ * AudioJournalCard.tsx). The journal screen above uses JournalRecord; the
+ * dashboard card uses this shape. Both mappings live in this one module —
+ * the only adapter between VoiceJournalEntry and UI — sharing formatDuration.
+ */
+export interface AudioJournalEntry {
+  id: string;
+  timestamp: string;
+  durationMillis: number;
+  uri: string;
+}
+
+function toAudioJournalEntry(entry: VoiceJournalEntry): AudioJournalEntry {
+  return {
+    id: entry.id,
+    timestamp: new Date(entry.createdAt).toLocaleString(),
+    durationMillis: entry.durationMillis,
+    uri: entry.uri,
+  };
+}
+
+export async function getAudioJournals(): Promise<AudioJournalEntry[]> {
+  const entries = await listVoiceJournals();
+  return entries.map(toAudioJournalEntry);
+}
+
+export async function saveAudioJournal(entry: {
+  uri: string;
+  durationMillis: number;
+}): Promise<AudioJournalEntry[]> {
+  const updated = await saveVoiceJournal({
+    tempUri: entry.uri,
+    durationMillis: entry.durationMillis,
+  });
+  return updated.map(toAudioJournalEntry);
+}
+
+export async function deleteAudioJournal(
+  id: string
+): Promise<AudioJournalEntry[]> {
+  const updated = await deleteVoiceJournal(id);
+  return updated.map(toAudioJournalEntry);
+}

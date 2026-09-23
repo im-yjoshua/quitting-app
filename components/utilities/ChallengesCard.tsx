@@ -14,8 +14,9 @@ import {
   DailyChallenge,
   getChallenges,
   saveChallenges,
-  getTodayDateString,
 } from '@/services/legacyStorage';
+// Single app-wide local YYYY-MM-DD day key (services/chronometerEngine.ts).
+import { getLocalDateKey } from '@/services/chronometerEngine';
 
 export function ChallengesCard() {
   const { colors, theme } = useAppTheme();
@@ -38,7 +39,7 @@ export function ChallengesCard() {
   }, []);
 
   const handleToggleChallenge = async (id: string, currentlyCompleted: boolean) => {
-    const todayStr = getTodayDateString();
+    const todayStr = getLocalDateKey(Date.now());
 
     if (!currentlyCompleted) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

@@ -66,6 +66,29 @@ interface ChallengesContextType {
 
 const ChallengesContext = createContext<ChallengesContextType | undefined>(undefined);
 
+/**
+ * Single source of truth for challenge-XP tier resolution.
+ * Pure function — no independent tier computation may live in screens/services.
+ */
+export function resolveChallengeTier(xp: number): {
+  currentTier: typeof TIERS[0];
+  nextTier: typeof TIERS[0] | null;
+} {
+  let currentTier = TIERS[0];
+  let nextTier: typeof TIERS[0] | null = null;
+
+  for (let i = 0; i < TIERS.length; i++) {
+    if (xp >= TIERS[i].minXp) {
+      currentTier = TIERS[i];
+      nextTier = TIERS[i + 1] || null;
+    } else {
+      break;
+    }
+  }
+
+  return { currentTier, nextTier };
+}
+
 export function ChallengesProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<ChallengesData>(DEFAULT_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -170,18 +193,8 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
     }));
   };
 
-  // Determine tiers
-  let currentTier = TIERS[0];
-  let nextTier: typeof TIERS[0] | null = null;
-  
-  for (let i = 0; i < TIERS.length; i++) {
-    if (data.xp >= TIERS[i].minXp) {
-      currentTier = TIERS[i];
-      nextTier = TIERS[i + 1] || null;
-    } else {
-      break;
-    }
-  }
+  // Tiers resolved through the single source of truth above.
+  const { currentTier, nextTier } = resolveChallengeTier(data.xp);
 
   if (!isLoaded) return null;
 
