@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ interface DrawerNavigation {
 
 import { useAppData } from '../../context/AppDataContext';
 import { useAppTheme } from '../../context/ThemeContext';
+import { loadTodayRitualChecks, saveRitualChecks } from '../../services/ritualChecklist';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
 
@@ -102,18 +103,48 @@ export default function RitualsScreen() {
 
   const isDark = theme === 'dark';
 
-  // Local checkbox sub-state for individual ritual items
+  // Checkbox state is persisted per local day via services/ritualChecklist.ts —
+  // it used to be local-only and reset on every revisit.
   const [checkedAmItems, setCheckedAmItems] = useState<Record<string, boolean>>({});
   const [checkedPmItems, setCheckedPmItems] = useState<Record<string, boolean>>({});
+  // Refs mirror state so persisted writes always snapshot the latest values,
+  // even when toggles land in quick succession.
+  const checkedAmRef = useRef<Record<string, boolean>>({});
+  const checkedPmRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const saved = await loadTodayRitualChecks();
+      if (cancelled) return;
+      checkedAmRef.current = saved.am;
+      checkedPmRef.current = saved.pm;
+      setCheckedAmItems(saved.am);
+      setCheckedPmItems(saved.pm);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistChecks = (am: Record<string, boolean>, pm: Record<string, boolean>) => {
+    void saveRitualChecks({ am, pm });
+  };
 
   const toggleAmItem = (id: string) => {
     Haptics.selectionAsync();
-    setCheckedAmItems((prev) => ({ ...prev, [id]: !prev[id] }));
+    const next = { ...checkedAmRef.current, [id]: !checkedAmRef.current[id] };
+    checkedAmRef.current = next;
+    setCheckedAmItems(next);
+    persistChecks(next, checkedPmRef.current);
   };
 
   const togglePmItem = (id: string) => {
     Haptics.selectionAsync();
-    setCheckedPmItems((prev) => ({ ...prev, [id]: !prev[id] }));
+    const next = { ...checkedPmRef.current, [id]: !checkedPmRef.current[id] };
+    checkedPmRef.current = next;
+    setCheckedPmItems(next);
+    persistChecks(checkedAmRef.current, next);
   };
 
   const handleCompleteAmPhase = async () => {
