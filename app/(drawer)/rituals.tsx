@@ -25,7 +25,7 @@ import { useAppData } from '../../context/AppDataContext';
 import { useAppTheme } from '../../context/ThemeContext';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
-import { PaywallModal } from '../../components/monetization/PaywallModal';
+
 
 
 interface RitualItem {
@@ -86,10 +86,10 @@ function getTodayKey(): string {
 }
 
 export default function RitualsScreen() {
-  const { state, completeCircadianRitual, isSovereignUser } = useAppData();
+  const { state, completeCircadianRitual, isSovereignUser, openPaywall } = useAppData();
   const { colors, theme } = useAppTheme();
   const navigation = useNavigation<DrawerNavigation>();
-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
+
   const todayKey = getTodayKey();
   const todayRecord = state.circadianHistory[todayKey] || {
     dateString: todayKey,
@@ -414,7 +414,7 @@ export default function RitualsScreen() {
             {!isSovereignUser && (
               <SovereignLockPill
                 size="sm"
-                onPress={() => setPaywallModalVisible(true)}
+                onPress={() => openPaywall()}
               />
             )}
           </View>
@@ -424,7 +424,7 @@ export default function RitualsScreen() {
             onPress={() => {
               if (!isSovereignUser) {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setPaywallModalVisible(true);
+                openPaywall();
               }
             }}
             style={styles.customConfigCardWrapper}
@@ -490,11 +490,7 @@ export default function RitualsScreen() {
         </View>
       </ScrollView>
 
-      {/* Sovereign Pass Paywall Modal */}
-      <PaywallModal
-        visible={paywallModalVisible}
-        onClose={() => setPaywallModalVisible(false)}
-      />
+      {/* Sovereign Pass paywall is the single global modal in app/_layout.tsx */}
     </SafeAreaView>
   );
 }

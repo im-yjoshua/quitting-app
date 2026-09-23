@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, Mic } from 'lucide-react-native';
 import { useAppTheme } from '@/context/ThemeContext';
-import { usePro } from '@/context/ProContext';
+import { useAppData } from '@/context/AppDataContext';
 import { VoiceRecordBubble } from '@/components/journal/VoiceRecordBubble';
 import { JournalEntryCard } from '@/components/journal/JournalEntryCard';
 import { JournalReminderModal } from '@/components/journal/JournalReminderModal';
@@ -11,7 +11,7 @@ import { JournalRecord, getJournalRecords, deleteJournalRecord } from '@/service
 
 export default function JournalScreen() {
   const { colors } = useAppTheme();
-  const { isPro, showPaywall } = usePro();
+  const { isSovereignUser, openPaywall } = useAppData();
   const insets = useSafeAreaInsets();
 
   const [records, setRecords] = useState<JournalRecord[]>([]);
@@ -63,10 +63,10 @@ export default function JournalScreen() {
   };
 
   const handleProGated = () => {
-    showPaywall();
+    openPaywall();
   };
 
-  const canRecord = isPro || records.length === 0;
+  const canRecord = isSovereignUser || records.length === 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.canvas }]}>

@@ -1,0 +1,927 @@
+diff --git a/app/(drawer)/index.tsx b/app/(drawer)/index.tsx
+index 92b8a67..6778813 100644
+--- a/app/(drawer)/index.tsx
++++ b/app/(drawer)/index.tsx
+@@ -34,12 +34,11 @@ import { AudioJournalCard } from '@/components/utilities/AudioJournalCard';
+ import { ResetConfirmationModal } from '@/components/dashboard/ResetConfirmationModal';
+ import { ImpulseNeutralizerModal } from '@/components/dashboard/ImpulseNeutralizerModal';
+ import { BreathingSphereModal } from '@/components/dashboard/BreathingSphereModal';
+-import { PaywallModal } from '@/components/monetization/PaywallModal';
+ import { EmergencyModal } from '@/components/EmergencyModal';
+ import { activateEmergencyShield } from '@/services/shield';
+ 
+ export default function CommandDashboardScreen() {
+-  const { refreshState, state, cleanDurationMs } = useAppData();
++  const { refreshState, state, cleanDurationMs, openPaywall } = useAppData();
+   const { colors, theme } = useAppTheme();
+   const { bestRecordMs, attemptCount } = state.profile;
+   const { modal } = useLocalSearchParams<{ modal?: string }>();
+@@ -51,7 +50,6 @@ export default function CommandDashboardScreen() {
+   const [resetModalVisible, setResetModalVisible] = useState(false);
+   const [urgeModalVisible, setUrgeModalVisible] = useState(false);
+   const [breathingModalVisible, setBreathingModalVisible] = useState(false);
+-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
+ 
+   // Coordinate modal triggers (Air-gapped: no camera/optical modals)
+   useEffect(() => {
+@@ -66,7 +64,9 @@ export default function CommandDashboardScreen() {
+     } else if (normalized === 'reset' || normalized === 'slip') {
+       setResetModalVisible(true);
+     } else if (normalized === 'paywall' || normalized === 'sovereign') {
+-      setPaywallModalVisible(true);
++      // Deep-link trigger: open the single global paywall and clear the param.
++      openPaywall();
++      router.setParams({ modal: '' });
+     }
+   }, [modal]);
+ 
+@@ -118,7 +118,7 @@ export default function CommandDashboardScreen() {
+             activeOpacity={0.8}
+             onPress={() => {
+               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+-              setPaywallModalVisible(true);
++              openPaywall();
+             }}
+             style={[styles.headerProfileBadge, { backgroundColor: colors.glassSubtle, borderColor: colors.border }]}
+             accessibilityLabel="View Profile and Current Run"
+@@ -295,10 +295,6 @@ export default function CommandDashboardScreen() {
+         visible={breathingModalVisible}
+         onClose={() => dismissModal(setBreathingModalVisible)}
+       />
+-      <PaywallModal
+-        visible={paywallModalVisible}
+-        onClose={() => dismissModal(setPaywallModalVisible)}
+-      />
+     </SafeAreaView>
+   );
+ }
+diff --git a/app/(drawer)/journal.tsx b/app/(drawer)/journal.tsx
+index 881479a..323f7ce 100644
+--- a/app/(drawer)/journal.tsx
++++ b/app/(drawer)/journal.tsx
+@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
+ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { Bell, Mic } from 'lucide-react-native';
+ import { useAppTheme } from '@/context/ThemeContext';
+-import { usePro } from '@/context/ProContext';
++import { useAppData } from '@/context/AppDataContext';
+ import { VoiceRecordBubble } from '@/components/journal/VoiceRecordBubble';
+ import { JournalEntryCard } from '@/components/journal/JournalEntryCard';
+ import { JournalReminderModal } from '@/components/journal/JournalReminderModal';
+@@ -11,7 +11,7 @@ import { JournalRecord, getJournalRecords, deleteJournalRecord } from '@/service
+ 
+ export default function JournalScreen() {
+   const { colors } = useAppTheme();
+-  const { isPro, showPaywall } = usePro();
++  const { isSovereignUser, openPaywall } = useAppData();
+   const insets = useSafeAreaInsets();
+ 
+   const [records, setRecords] = useState<JournalRecord[]>([]);
+@@ -63,10 +63,10 @@ export default function JournalScreen() {
+   };
+ 
+   const handleProGated = () => {
+-    showPaywall();
++    openPaywall();
+   };
+ 
+-  const canRecord = isPro || records.length === 0;
++  const canRecord = isSovereignUser || records.length === 0;
+ 
+   return (
+     <SafeAreaView style={[styles.container, { backgroundColor: colors.canvas }]}>
+diff --git a/app/(drawer)/ledger.tsx b/app/(drawer)/ledger.tsx
+index ddeaa08..e6e3965 100644
+--- a/app/(drawer)/ledger.tsx
++++ b/app/(drawer)/ledger.tsx
+@@ -1,4 +1,4 @@
+-import React, { useState, useMemo } from 'react';
++import React, { useMemo } from 'react';
+ import {
+   View,
+   Text,
+@@ -17,7 +17,7 @@ import { useAppData } from '../../context/AppDataContext';
+ import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
+ import { RelapseTrigger, RelapseRecord } from '../../types/app';
+ import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
+-import { PaywallModal } from '../../components/monetization/PaywallModal';
++
+ 
+ const TRIGGER_META: Record<
+   RelapseTrigger,
+@@ -65,12 +65,12 @@ interface DrawerNavigation {
+ }
+ 
+ export default function LedgerScreen() {
+-  const { state, isSovereignUser } = useAppData();
++  const { state, isSovereignUser, openPaywall } = useAppData();
+   const { relapseHistory, profile } = state;
+   const { colors, theme } = useAppTheme();
+   const navigation = useNavigation<DrawerNavigation>();
+   const isDark = theme === 'dark';
+-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
++
+ 
+   const triggerStats = useMemo(() => {
+     const counts: Partial<Record<RelapseTrigger, number>> = {};
+@@ -179,7 +179,7 @@ export default function LedgerScreen() {
+               {!isSovereignUser && (
+                 <SovereignLockPill
+                   size="sm"
+-                  onPress={() => setPaywallModalVisible(true)}
++                  onPress={() => openPaywall()}
+                 />
+               )}
+             </View>
+@@ -188,7 +188,7 @@ export default function LedgerScreen() {
+               onPress={() => {
+                 if (!isSovereignUser) {
+                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+-                  setPaywallModalVisible(true);
++                  openPaywall();
+                 }
+               }}
+             >
+@@ -240,7 +240,7 @@ export default function LedgerScreen() {
+           {!isSovereignUser && relapseHistory.length > 1 && (
+             <SovereignLockPill
+               size="sm"
+-              onPress={() => setPaywallModalVisible(true)}
++              onPress={() => openPaywall()}
+             />
+           )}
+         </View>
+@@ -335,7 +335,7 @@ export default function LedgerScreen() {
+                 activeOpacity={0.88}
+                 onPress={() => {
+                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+-                  setPaywallModalVisible(true);
++                  openPaywall();
+                 }}
+                 style={styles.archiveLockCardWrapper}
+               >
+@@ -375,11 +375,7 @@ export default function LedgerScreen() {
+         )}
+       </ScrollView>
+ 
+-      {/* Sovereign Pass Paywall Modal */}
+-      <PaywallModal
+-        visible={paywallModalVisible}
+-        onClose={() => setPaywallModalVisible(false)}
+-      />
++      {/* Sovereign Pass paywall is the single global modal in app/_layout.tsx */}
+     </SafeAreaView>
+   );
+ }
+diff --git a/app/(drawer)/rituals.tsx b/app/(drawer)/rituals.tsx
+index 1aa6051..ba40683 100644
+--- a/app/(drawer)/rituals.tsx
++++ b/app/(drawer)/rituals.tsx
+@@ -25,7 +25,7 @@ import { useAppData } from '../../context/AppDataContext';
+ import { useAppTheme } from '../../context/ThemeContext';
+ import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
+ import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
+-import { PaywallModal } from '../../components/monetization/PaywallModal';
++
+ 
+ 
+ interface RitualItem {
+@@ -86,10 +86,10 @@ function getTodayKey(): string {
+ }
+ 
+ export default function RitualsScreen() {
+-  const { state, completeCircadianRitual, isSovereignUser } = useAppData();
++  const { state, completeCircadianRitual, isSovereignUser, openPaywall } = useAppData();
+   const { colors, theme } = useAppTheme();
+   const navigation = useNavigation<DrawerNavigation>();
+-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
++
+   const todayKey = getTodayKey();
+   const todayRecord = state.circadianHistory[todayKey] || {
+     dateString: todayKey,
+@@ -414,7 +414,7 @@ export default function RitualsScreen() {
+             {!isSovereignUser && (
+               <SovereignLockPill
+                 size="sm"
+-                onPress={() => setPaywallModalVisible(true)}
++                onPress={() => openPaywall()}
+               />
+             )}
+           </View>
+@@ -424,7 +424,7 @@ export default function RitualsScreen() {
+             onPress={() => {
+               if (!isSovereignUser) {
+                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+-                setPaywallModalVisible(true);
++                openPaywall();
+               }
+             }}
+             style={styles.customConfigCardWrapper}
+@@ -490,11 +490,7 @@ export default function RitualsScreen() {
+         </View>
+       </ScrollView>
+ 
+-      {/* Sovereign Pass Paywall Modal */}
+-      <PaywallModal
+-        visible={paywallModalVisible}
+-        onClose={() => setPaywallModalVisible(false)}
+-      />
++      {/* Sovereign Pass paywall is the single global modal in app/_layout.tsx */}
+     </SafeAreaView>
+   );
+ }
+diff --git a/app/(drawer)/roadmap.tsx b/app/(drawer)/roadmap.tsx
+index 14c8322..58161cc 100644
+--- a/app/(drawer)/roadmap.tsx
++++ b/app/(drawer)/roadmap.tsx
+@@ -25,7 +25,7 @@ import { useAppData } from '../../context/AppDataContext';
+ import { useAppTheme } from '../../context/ThemeContext';
+ import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
+ import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
+-import { PaywallModal } from '../../components/monetization/PaywallModal';
++
+ 
+ interface RecoveryStage {
+   id: string;
+@@ -92,11 +92,11 @@ const RECOVERY_STAGES: RecoveryStage[] = [
+ ];
+ 
+ export default function RoadmapScreen() {
+-  const { cleanDurationMs, isSovereignUser } = useAppData();
++  const { cleanDurationMs, isSovereignUser, openPaywall } = useAppData();
+   const { colors, theme } = useAppTheme();
+   const navigation = useNavigation<DrawerNavigation>();
+   const [expandedStageId, setExpandedStageId] = useState<string | null>(null);
+-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
++
+ 
+   // Derive active clean days
+   const currentDaysClean = Math.max(1, Math.floor(cleanDurationMs / (1000 * 60 * 60 * 24)));
+@@ -106,7 +106,7 @@ export default function RoadmapScreen() {
+     const isGated = stage.stageNumber > 1 && !isSovereignUser;
+     if (isGated) {
+       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+-      setPaywallModalVisible(true);
++      openPaywall();
+       return;
+     }
+     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+@@ -259,7 +259,7 @@ export default function RoadmapScreen() {
+                       {isGated ? (
+                         <SovereignLockPill
+                           size="sm"
+-                          onPress={() => setPaywallModalVisible(true)}
++                          onPress={() => openPaywall()}
+                         />
+                       ) : (
+                         <Ionicons
+@@ -296,11 +296,7 @@ export default function RoadmapScreen() {
+         </View>
+       </ScrollView>
+ 
+-      {/* Sovereign Pass Paywall Modal */}
+-      <PaywallModal
+-        visible={paywallModalVisible}
+-        onClose={() => setPaywallModalVisible(false)}
+-      />
++      {/* Sovereign Pass paywall is the single global modal in app/_layout.tsx */}
+     </SafeAreaView>
+   );
+ }
+diff --git a/app/(drawer)/settings.tsx b/app/(drawer)/settings.tsx
+index 0d91575..4c889e2 100644
+--- a/app/(drawer)/settings.tsx
++++ b/app/(drawer)/settings.tsx
+@@ -20,7 +20,6 @@ import {
+   AccentPaletteId,
+ } from '@/context/ThemeContext';
+ import { useAppData } from '@/context/AppDataContext';
+-import { usePro } from '@/context/ProContext';
+ import {
+   getShieldState,
+   requestFamilyControlsAuth,
+@@ -90,12 +89,10 @@ export default function SettingsScreen() {
+     toggleTheme();
+   };
+ 
+-  const { isPro, showPaywall } = usePro();
+-
+   const handleSelectAccent = async (nextAccent: AccentPaletteId) => {
+-    if (!isPro && nextAccent !== 'emerald') {
++    if (!isSovereignUser && nextAccent !== 'emerald') {
+       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+-      showPaywall();
++      openPaywall();
+       return;
+     }
+     Haptics.selectionAsync();
+@@ -308,7 +305,7 @@ export default function SettingsScreen() {
+                         {isSelected && (
+                           <Ionicons name="checkmark" size={11} color="#FFFFFF" />
+                         )}
+-                        {!isSelected && !isPro && paletteKey !== 'emerald' && (
++                        {!isSelected && !isSovereignUser && paletteKey !== 'emerald' && (
+                           <Ionicons name="lock-closed" size={10} color="#FFFFFF" />
+                         )}
+                       </View>
+diff --git a/app/_layout.tsx b/app/_layout.tsx
+index c585ed2..1a927e8 100644
+--- a/app/_layout.tsx
++++ b/app/_layout.tsx
+@@ -18,7 +18,7 @@ import { scheduleDailyCheckIn } from '@/services/notifications';
+ SplashScreen.preventAutoHideAsync();
+ 
+ function RootNavigationLayout() {
+-  const { state, isLoading, cleanDurationMs } = useAppData();
++  const { state, isLoading, cleanDurationMs, isPaywallVisible, closePaywall } = useAppData();
+   const { colors, theme } = useAppTheme();
+   const segments = useSegments();
+   const router = useRouter();
+@@ -166,27 +166,27 @@ function RootNavigationLayout() {
+           onComplete={() => setIsSplashVisible(false)}
+         />
+       )}
++
++      {/* Single global Sovereign paywall, driven by AppDataContext.openPaywall().
++          Every premium entry point in the app funnels through this one modal. */}
++      <PaywallModal visible={isPaywallVisible} onClose={closePaywall} />
+     </View>
+   );
+ }
+ 
+-import { ProProvider } from '@/context/ProContext';
+ import { ChallengesProvider } from '@/context/ChallengesContext';
+-import { PaywallModal } from '@/components/modals/PaywallModal';
++import { PaywallModal } from '@/components/monetization/PaywallModal';
+ 
+ export default function RootLayout() {
+   return (
+     <GestureHandlerRootView style={{ flex: 1 }}>
+       <ThemeProvider>
+         <SafeAreaProvider>
+-          <ProProvider>
+-            <AppDataProvider>
+-              <ChallengesProvider>
+-                <RootNavigationLayout />
+-                <PaywallModal />
+-              </ChallengesProvider>
+-            </AppDataProvider>
+-          </ProProvider>
++          <AppDataProvider>
++            <ChallengesProvider>
++              <RootNavigationLayout />
++            </ChallengesProvider>
++          </AppDataProvider>
+         </SafeAreaProvider>
+       </ThemeProvider>
+     </GestureHandlerRootView>
+diff --git a/components/modals/PaywallModal.tsx b/components/modals/PaywallModal.tsx
+deleted file mode 100644
+index 24959b0..0000000
+--- a/components/modals/PaywallModal.tsx
++++ /dev/null
+@@ -1,255 +0,0 @@
+-import React, { useState } from 'react';
+-import { View, Text, StyleSheet, TouchableOpacity, Modal, SafeAreaView, Platform } from 'react-native';
+-import { BlurView } from 'expo-blur';
+-import { Ionicons } from '@expo/vector-icons';
+-import * as Haptics from 'expo-haptics';
+-import { useAppTheme } from '@/context/ThemeContext';
+-import { usePro } from '@/context/ProContext';
+-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+-
+-export function PaywallModal() {
+-  const { colors, theme } = useAppTheme();
+-  const { isPro, setProStatus, isPaywallVisible, hidePaywall } = usePro();
+-  
+-  const [selectedTier, setSelectedTier] = useState<'weekly' | 'monthly' | 'annual' | 'lifetime'>('annual');
+-
+-  const isDark = theme === 'dark';
+-
+-  const handleSubscribe = async () => {
+-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+-    await setProStatus(true);
+-    hidePaywall();
+-  };
+-
+-  const handleClose = () => {
+-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+-    hidePaywall();
+-  };
+-
+-  return (
+-    <Modal
+-      visible={isPaywallVisible}
+-      animationType="slide"
+-      transparent={true}
+-      onRequestClose={handleClose}
+-    >
+-      <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
+-        <SafeAreaView style={styles.safeArea}>
+-          <View style={styles.headerRow}>
+-            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }} style={styles.closeBtn}>
+-              <Ionicons name="close" size={24} color={colors.textPrimary} />
+-            </TouchableOpacity>
+-          </View>
+-
+-          <Animated.View entering={FadeInDown.duration(600).delay(100)} style={styles.content}>
+-            <Ionicons name="shield-checkmark" size={44} color={colors.accent} style={styles.glyph} />
+-            <Text style={[styles.title, { color: colors.textPrimary }]}>Unlock Sovereign Dominion</Text>
+-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Private, air-gapped discipline with advanced tracking.</Text>
+-
+-            <View style={[styles.featuresList, { borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }]}>
+-              <View style={styles.featureItem}>
+-                <Ionicons name="color-palette" size={20} color={colors.accent} />
+-                <Text style={[styles.featureText, { color: colors.textPrimary }]}>Dynamic Spectral Palettes (Gold, Cobalt, Crimson, Emerald)</Text>
+-              </View>
+-              <View style={[styles.hairline, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />
+-              
+-              <View style={styles.featureItem}>
+-                <Ionicons name="mic" size={20} color={colors.accent} />
+-                <Text style={[styles.featureText, { color: colors.textPrimary }]}>In-App Audio Forensic Journaling</Text>
+-              </View>
+-              <View style={[styles.hairline, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />
+-              
+-              <View style={styles.featureItem}>
+-                <Ionicons name="eye-off" size={20} color={colors.accent} />
+-                <Text style={[styles.featureText, { color: colors.textPrimary }]}>Stealth Mode & Header Title Masking</Text>
+-              </View>
+-              <View style={[styles.hairline, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />
+-              
+-              <View style={styles.featureItem}>
+-                <Ionicons name="flash" size={20} color={colors.accent} />
+-                <Text style={[styles.featureText, { color: colors.textPrimary }]}>Priority Urge Intervention Tools</Text>
+-              </View>
+-            </View>
+-
+-            <View style={styles.tiersContainer}>
+-              <TouchableOpacity 
+-                activeOpacity={0.8}
+-                onPress={() => setSelectedTier('weekly')}
+-                style={[styles.tierCard, { borderColor: selectedTier === 'weekly' ? colors.accent : (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)') }]}
+-              >
+-                <Text style={[styles.tierName, { color: colors.textPrimary }]}>Weekly</Text>
+-                <Text style={[styles.tierPrice, { color: colors.textSecondary }]}>$1.99 / week</Text>
+-              </TouchableOpacity>
+-
+-              <TouchableOpacity 
+-                activeOpacity={0.8}
+-                onPress={() => setSelectedTier('monthly')}
+-                style={[styles.tierCard, { borderColor: selectedTier === 'monthly' ? colors.accent : (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)') }]}
+-              >
+-                <View style={styles.tierHeader}>
+-                  <Text style={[styles.tierName, { color: colors.textPrimary }]}>Monthly</Text>
+-                  <View style={[styles.pill, { backgroundColor: colors.accentSubtle }]}><Text style={[styles.pillText, { color: colors.accent }]}>Most Flexible</Text></View>
+-                </View>
+-                <Text style={[styles.tierPrice, { color: colors.textSecondary }]}>$9.99 / month</Text>
+-              </TouchableOpacity>
+-
+-              <TouchableOpacity 
+-                activeOpacity={0.8}
+-                onPress={() => setSelectedTier('annual')}
+-                style={[styles.tierCard, { borderColor: selectedTier === 'annual' ? colors.accent : (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)') }]}
+-              >
+-                <View style={styles.tierHeader}>
+-                  <Text style={[styles.tierName, { color: colors.textPrimary }]}>Annual</Text>
+-                  <View style={[styles.pill, { backgroundColor: colors.accent }]}><Text style={[styles.pillText, { color: '#FFF' }]}>Best Value - Save 58%</Text></View>
+-                </View>
+-                <Text style={[styles.tierPrice, { color: colors.textSecondary }]}>$49.99 / year</Text>
+-              </TouchableOpacity>
+-              
+-              <TouchableOpacity 
+-                activeOpacity={0.8}
+-                onPress={() => setSelectedTier('lifetime')}
+-                style={[styles.tierCard, { borderColor: selectedTier === 'lifetime' ? colors.accent : (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)') }]}
+-              >
+-                <Text style={[styles.tierName, { color: colors.textPrimary }]}>Lifetime</Text>
+-                <Text style={[styles.tierPrice, { color: colors.textSecondary }]}>$149.99 one-time</Text>
+-              </TouchableOpacity>
+-            </View>
+-
+-            <TouchableOpacity 
+-              activeOpacity={0.85}
+-              onPress={handleSubscribe}
+-              style={[styles.actionBtn, { backgroundColor: colors.textPrimary }]}
+-            >
+-              <Text style={[styles.actionBtnText, { color: colors.canvas }]}>Claim Sovereign Access</Text>
+-            </TouchableOpacity>
+-
+-            <View style={styles.footerLinks}>
+-              <TouchableOpacity onPress={handleSubscribe}><Text style={[styles.footerText, { color: colors.textSecondary }]}>Restore Purchases</Text></TouchableOpacity>
+-              <Text style={[styles.footerText, { color: colors.textSecondary, marginHorizontal: 8 }]}>•</Text>
+-              <TouchableOpacity><Text style={[styles.footerText, { color: colors.textSecondary }]}>Terms & Privacy</Text></TouchableOpacity>
+-            </View>
+-          </Animated.View>
+-        </SafeAreaView>
+-      </BlurView>
+-    </Modal>
+-  );
+-}
+-
+-const styles = StyleSheet.create({
+-  safeArea: {
+-    flex: 1,
+-  },
+-  headerRow: {
+-    paddingHorizontal: 20,
+-    paddingTop: 10,
+-    alignItems: 'flex-end',
+-  },
+-  closeBtn: {
+-    width: 32,
+-    height: 32,
+-    borderRadius: 16,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-    backgroundColor: 'rgba(150, 150, 150, 0.15)',
+-  },
+-  content: {
+-    flex: 1,
+-    paddingHorizontal: 24,
+-    justifyContent: 'center',
+-  },
+-  glyph: {
+-    alignSelf: 'center',
+-    marginBottom: 16,
+-  },
+-  title: {
+-    fontSize: 28,
+-    fontWeight: '800',
+-    textAlign: 'center',
+-    marginBottom: 8,
+-    letterSpacing: -0.5,
+-  },
+-  subtitle: {
+-    fontSize: 15,
+-    textAlign: 'center',
+-    marginBottom: 28,
+-    paddingHorizontal: 20,
+-    lineHeight: 22,
+-  },
+-  featuresList: {
+-    borderRadius: 16,
+-    borderWidth: StyleSheet.hairlineWidth,
+-    overflow: 'hidden',
+-    marginBottom: 32,
+-    backgroundColor: 'rgba(150, 150, 150, 0.05)',
+-  },
+-  featureItem: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    paddingVertical: 14,
+-    paddingHorizontal: 16,
+-    gap: 12,
+-  },
+-  featureText: {
+-    fontSize: 14,
+-    fontWeight: '500',
+-    flex: 1,
+-  },
+-  hairline: {
+-    height: StyleSheet.hairlineWidth,
+-    marginLeft: 48,
+-  },
+-  tiersContainer: {
+-    gap: 12,
+-    marginBottom: 32,
+-  },
+-  tierCard: {
+-    padding: 16,
+-    borderRadius: 16,
+-    borderWidth: 2,
+-  },
+-  tierHeader: {
+-    flexDirection: 'row',
+-    justifyContent: 'space-between',
+-    alignItems: 'center',
+-  },
+-  tierName: {
+-    fontSize: 16,
+-    fontWeight: '700',
+-  },
+-  tierPrice: {
+-    fontSize: 14,
+-    marginTop: 4,
+-  },
+-  pill: {
+-    paddingHorizontal: 8,
+-    paddingVertical: 4,
+-    borderRadius: 999,
+-  },
+-  pillText: {
+-    fontSize: 10,
+-    fontWeight: '800',
+-    textTransform: 'uppercase',
+-    letterSpacing: 0.5,
+-  },
+-  actionBtn: {
+-    height: 56,
+-    borderRadius: 28,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-    marginBottom: 20,
+-  },
+-  actionBtnText: {
+-    fontSize: 17,
+-    fontWeight: '700',
+-  },
+-  footerLinks: {
+-    flexDirection: 'row',
+-    justifyContent: 'center',
+-    alignItems: 'center',
+-    marginBottom: 20,
+-  },
+-  footerText: {
+-    fontSize: 12,
+-    fontWeight: '500',
+-  },
+-});
+diff --git a/components/utilities/AudioJournalCard.tsx b/components/utilities/AudioJournalCard.tsx
+index 4d5744a..0f34a5d 100644
+--- a/components/utilities/AudioJournalCard.tsx
++++ b/components/utilities/AudioJournalCard.tsx
+@@ -11,7 +11,7 @@ import Animated, {
+ } from 'react-native-reanimated';
+ import { Audio } from '@/lib/expo-av-mock';
+ import { useAppTheme } from '@/context/ThemeContext';
+-import { usePro } from '@/context/ProContext';
++import { useAppData } from '@/context/AppDataContext';
+ import {
+   AudioJournalEntry,
+   getAudioJournals,
+@@ -22,7 +22,7 @@ import {
+ 
+ export function AudioJournalCard() {
+   const { colors, theme } = useAppTheme();
+-  const { isPro, showPaywall } = usePro();
++  const { isSovereignUser, openPaywall } = useAppData();
+   
+   const [journals, setJournals] = useState<AudioJournalEntry[]>([]);
+   const [isRecording, setIsRecording] = useState(false);
+@@ -67,9 +67,9 @@ export function AudioJournalCard() {
+   };
+ 
+   const handleRecordPress = async () => {
+-    if (!isPro && journals.length >= 1) {
++    if (!isSovereignUser && journals.length >= 1) {
+       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+-      showPaywall();
++      openPaywall();
+       return;
+     }
+ 
+diff --git a/context/AppDataContext.tsx b/context/AppDataContext.tsx
+index bf077c8..da76578 100644
+--- a/context/AppDataContext.tsx
++++ b/context/AppDataContext.tsx
+@@ -21,7 +21,7 @@ import {
+   SovereignEntitlement,
+ } from '../types/app';
+ import {
+-  loadCachedEntitlement,
++  getTrustedOfflineEntitlement,
+   purchaseProduct,
+   restorePurchasesWithBiometrics as restorePurchasesWithBiometricsService,
+   syncCustomerEntitlements,
+@@ -139,13 +139,16 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
+     };
+   }, [syncCurrentTime]);
+ 
+-  // Initial local storage hydration: load app state and cached entitlement in parallel
++  // Initial local storage hydration: load app state and the trusted offline
++  // entitlement in parallel. The trusted entitlement honors ONLY previously
++  // RevenueCat-validated purchases outside __DEV__ — synthesized dev-sandbox
++  // entitlements never unlock premium here.
+   useEffect(() => {
+     async function hydrate() {
+       try {
+         const [stored, cachedEntitlement] = await Promise.all([
+           loadStoredAppState(),
+-          loadCachedEntitlement(),
++          getTrustedOfflineEntitlement(),
+         ]);
+         setState(stored);
+         setEntitlement(cachedEntitlement);
+diff --git a/context/ProContext.tsx b/context/ProContext.tsx
+deleted file mode 100644
+index 7e90e28..0000000
+--- a/context/ProContext.tsx
++++ /dev/null
+@@ -1,82 +0,0 @@
+-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
+-import AsyncStorage from '@react-native-async-storage/async-storage';
+-
+-interface ProContextValue {
+-  isPro: boolean;
+-  setProStatus: (status: boolean) => Promise<void>;
+-  isPaywallVisible: boolean;
+-  showPaywall: () => void;
+-  hidePaywall: () => void;
+-}
+-
+-const ProContext = createContext<ProContextValue | null>(null);
+-
+-const PRO_STORAGE_KEY = '@sovereign/is_pro';
+-
+-export const ProProvider = ({ children }: { children: ReactNode }) => {
+-  const [isPro, setIsPro] = useState<boolean>(false);
+-  const [isPaywallVisible, setIsPaywallVisible] = useState<boolean>(false);
+-  const [isLoading, setIsLoading] = useState<boolean>(true);
+-
+-  useEffect(() => {
+-    const loadProStatus = async () => {
+-      try {
+-        const stored = await AsyncStorage.getItem(PRO_STORAGE_KEY);
+-        if (stored !== null) {
+-          setIsPro(stored === 'true');
+-        }
+-      } catch (e) {
+-        console.warn('[ProContext] Failed to load pro status:', e);
+-      } finally {
+-        setIsLoading(false);
+-      }
+-    };
+-    loadProStatus();
+-  }, []);
+-
+-  const setProStatus = useCallback(async (status: boolean) => {
+-    setIsPro(status);
+-    try {
+-      await AsyncStorage.setItem(PRO_STORAGE_KEY, status ? 'true' : 'false');
+-    } catch (e) {
+-      console.warn('[ProContext] Failed to save pro status:', e);
+-    }
+-  }, []);
+-
+-  const showPaywall = useCallback(() => {
+-    setIsPaywallVisible(true);
+-  }, []);
+-
+-  const hidePaywall = useCallback(() => {
+-    setIsPaywallVisible(false);
+-  }, []);
+-
+-  const value = useMemo(
+-    () => ({
+-      isPro,
+-      setProStatus,
+-      isPaywallVisible,
+-      showPaywall,
+-      hidePaywall,
+-    }),
+-    [isPro, setProStatus, isPaywallVisible, showPaywall, hidePaywall]
+-  );
+-
+-  if (isLoading) {
+-    return null; // or loading screen
+-  }
+-
+-  return (
+-    <ProContext.Provider value={value}>
+-      {children}
+-    </ProContext.Provider>
+-  );
+-};
+-
+-export const usePro = (): ProContextValue => {
+-  const context = useContext(ProContext);
+-  if (!context) {
+-    throw new Error('usePro must be used within a ProProvider');
+-  }
+-  return context;
+-};
+diff --git a/services/purchases.ts b/services/purchases.ts
+index 901b2b8..235ab65 100644
+--- a/services/purchases.ts
++++ b/services/purchases.ts
+@@ -94,6 +94,33 @@ export async function clearCachedEntitlement(): Promise<void> {
+   }
+ }
+ 
++/**
++ * A cached entitlement unlocks premium ONLY if it was previously validated by
++ * RevenueCat (source === 'revenuecat'). Dev-sandbox synthesized entitlements
++ * (source === 'offline_cache' with isSovereign true) are test artifacts and must
++ * never unlock premium outside __DEV__.
++ */
++export function isValidatedEntitlement(
++  entitlement: SovereignEntitlement
++): boolean {
++  return entitlement.isSovereign === true && entitlement.source === 'revenuecat';
++}
++
++/**
++ * Offline entitlement trust rule — the single choke point for every
++ * "RevenueCat unavailable" path in this file:
++ * - __DEV__: honor whatever is cached (the dev sandbox may hold a simulated
++ *   entitlement from the DEV-ONLY purchase simulation below).
++ * - production: honor ONLY previously RevenueCat-validated entitlements.
++ */
++export async function getTrustedOfflineEntitlement(): Promise<SovereignEntitlement> {
++  const cached = await loadCachedEntitlement();
++  if (__DEV__) {
++    return cached;
++  }
++  return isValidatedEntitlement(cached) ? cached : DEFAULT_ENTITLEMENT;
++}
++
+ /**
+  * Initializes the RevenueCat SDK if API keys are provided.
+  * Gracefully operates in fallback mode if running in environments
+@@ -215,19 +242,31 @@ export async function purchaseProduct(plan: PurchasePlan): Promise<PurchaseResul
+   const ready = await initializePurchases();
+ 
+   if (!ready) {
+-    // Graceful offline/simulator mock purchase simulation for testing environments
+-    console.log('[Purchases] Operating in simulated sandbox purchase mode for:', plan);
+-    const simulatedEntitlement: SovereignEntitlement = {
+-      isSovereign: true,
+-      activePlan: plan,
+-      expirationDate: plan === 'annual' ? Date.now() + 365 * 24 * 60 * 60 * 1000 : null,
+-      latestPurchaseDate: Date.now(),
+-      originalPurchaseDate: Date.now(),
+-      source: 'offline_cache',
+-      lastVerifiedAt: Date.now(),
++    if (__DEV__) {
++      // DEV-ONLY sandbox: RevenueCat isn't configured (e.g. Expo Go without a
++      // test key). Synthesize a successful purchase so the paywall UI can be
++      // tested end-to-end. __DEV__ is false in every production/release build,
++      // so this path can NEVER grant premium in production. Do not remove or
++      // weaken the __DEV__ guard.
++      console.log('[Purchases] DEV-ONLY simulated sandbox purchase for:', plan);
++      const simulatedEntitlement: SovereignEntitlement = {
++        isSovereign: true,
++        activePlan: plan,
++        expirationDate: plan === 'annual' ? Date.now() + 365 * 24 * 60 * 60 * 1000 : null,
++        latestPurchaseDate: Date.now(),
++        originalPurchaseDate: Date.now(),
++        source: 'offline_cache',
++        lastVerifiedAt: Date.now(),
++      };
++      await saveCachedEntitlement(simulatedEntitlement);
++      return { success: true, entitlement: simulatedEntitlement };
++    }
++    // Production with no RevenueCat bridge: fail honestly. Never synthesize
++    // premium — that would be a universal paywall bypass.
++    return {
++      success: false,
++      error: 'Purchases are unavailable right now. Check your connection and try again.',
+     };
+-    await saveCachedEntitlement(simulatedEntitlement);
+-    return { success: true, entitlement: simulatedEntitlement };
+   }
+ 
+   try {
+@@ -307,8 +346,10 @@ async function restorePurchasesWithoutPrompt(): Promise<PurchaseResult> {
+   try {
+     const ready = await initializePurchases();
+     if (!ready) {
+-      const cached = await loadCachedEntitlement();
+-      return { success: cached.isSovereign, entitlement: cached };
++      // Offline: honor only a previously RevenueCat-validated entitlement.
++      // Synthesized dev-sandbox entitlements never unlock premium here.
++      const trusted = await getTrustedOfflineEntitlement();
++      return { success: trusted.isSovereign, entitlement: trusted };
+     }
+     const customerInfo = await Purchases.restorePurchases();
+     const entitlement = extractEntitlementFromCustomerInfo(customerInfo);
+@@ -347,14 +388,15 @@ export async function restorePurchasesWithBiometrics(): Promise<RestoreResult> {
+     const ready = await initializePurchases();
+ 
+     if (!ready) {
+-      // In simulator/offline development, check cached entitlement
+-      const cached = await loadCachedEntitlement();
+-      if (cached.isSovereign) {
++      // Offline: honor only a previously RevenueCat-validated entitlement.
++      // Synthesized dev-sandbox entitlements never unlock premium here.
++      const trusted = await getTrustedOfflineEntitlement();
++      if (trusted.isSovereign) {
+         return {
+           success: true,
+           restored: true,
+           message: 'Local Sovereign entitlement confirmed.',
+-          entitlement: cached,
++          entitlement: trusted,
+         };
+       }
+       return {
+@@ -400,14 +442,16 @@ export async function syncCustomerEntitlements(): Promise<SovereignEntitlement>
+   try {
+     const ready = await initializePurchases();
+     if (!ready) {
+-      return loadCachedEntitlement();
++      // Offline: honor only a previously RevenueCat-validated entitlement.
++      return getTrustedOfflineEntitlement();
+     }
+     const customerInfo = await Purchases.getCustomerInfo();
+     const entitlement = extractEntitlementFromCustomerInfo(customerInfo);
+     await saveCachedEntitlement(entitlement);
+     return entitlement;
+   } catch (error) {
+-    // If offline, silently keep cached entitlement
+-    return loadCachedEntitlement();
++    // If offline, silently keep the trusted cached entitlement (see trust rule
++    // in getTrustedOfflineEntitlement — never a synthesized one in production).
++    return getTrustedOfflineEntitlement();
+   }
+ }

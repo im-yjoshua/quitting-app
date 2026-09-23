@@ -21,7 +21,7 @@ import {
   SovereignEntitlement,
 } from '../types/app';
 import {
-  loadCachedEntitlement,
+  getTrustedOfflineEntitlement,
   purchaseProduct,
   restorePurchasesWithBiometrics as restorePurchasesWithBiometricsService,
   syncCustomerEntitlements,
@@ -139,13 +139,16 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
   }, [syncCurrentTime]);
 
-  // Initial local storage hydration: load app state and cached entitlement in parallel
+  // Initial local storage hydration: load app state and the trusted offline
+  // entitlement in parallel. The trusted entitlement honors ONLY previously
+  // RevenueCat-validated purchases outside __DEV__ — synthesized dev-sandbox
+  // entitlements never unlock premium here.
   useEffect(() => {
     async function hydrate() {
       try {
         const [stored, cachedEntitlement] = await Promise.all([
           loadStoredAppState(),
-          loadCachedEntitlement(),
+          getTrustedOfflineEntitlement(),
         ]);
         setState(stored);
         setEntitlement(cachedEntitlement);

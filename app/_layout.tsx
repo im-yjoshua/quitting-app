@@ -18,7 +18,7 @@ import { scheduleDailyCheckIn } from '@/services/notifications';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigationLayout() {
-  const { state, isLoading, cleanDurationMs } = useAppData();
+  const { state, isLoading, cleanDurationMs, isPaywallVisible, closePaywall } = useAppData();
   const { colors, theme } = useAppTheme();
   const segments = useSegments();
   const router = useRouter();
@@ -166,27 +166,27 @@ function RootNavigationLayout() {
           onComplete={() => setIsSplashVisible(false)}
         />
       )}
+
+      {/* Single global Sovereign paywall, driven by AppDataContext.openPaywall().
+          Every premium entry point in the app funnels through this one modal. */}
+      <PaywallModal visible={isPaywallVisible} onClose={closePaywall} />
     </View>
   );
 }
 
-import { ProProvider } from '@/context/ProContext';
 import { ChallengesProvider } from '@/context/ChallengesContext';
-import { PaywallModal } from '@/components/modals/PaywallModal';
+import { PaywallModal } from '@/components/monetization/PaywallModal';
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
         <SafeAreaProvider>
-          <ProProvider>
-            <AppDataProvider>
-              <ChallengesProvider>
-                <RootNavigationLayout />
-                <PaywallModal />
-              </ChallengesProvider>
-            </AppDataProvider>
-          </ProProvider>
+          <AppDataProvider>
+            <ChallengesProvider>
+              <RootNavigationLayout />
+            </ChallengesProvider>
+          </AppDataProvider>
         </SafeAreaProvider>
       </ThemeProvider>
     </GestureHandlerRootView>

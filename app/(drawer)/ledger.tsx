@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,7 @@ import { useAppData } from '../../context/AppDataContext';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { RelapseTrigger, RelapseRecord } from '../../types/app';
 import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
-import { PaywallModal } from '../../components/monetization/PaywallModal';
+
 
 const TRIGGER_META: Record<
   RelapseTrigger,
@@ -65,12 +65,12 @@ interface DrawerNavigation {
 }
 
 export default function LedgerScreen() {
-  const { state, isSovereignUser } = useAppData();
+  const { state, isSovereignUser, openPaywall } = useAppData();
   const { relapseHistory, profile } = state;
   const { colors, theme } = useAppTheme();
   const navigation = useNavigation<DrawerNavigation>();
   const isDark = theme === 'dark';
-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
+
 
   const triggerStats = useMemo(() => {
     const counts: Partial<Record<RelapseTrigger, number>> = {};
@@ -179,7 +179,7 @@ export default function LedgerScreen() {
               {!isSovereignUser && (
                 <SovereignLockPill
                   size="sm"
-                  onPress={() => setPaywallModalVisible(true)}
+                  onPress={() => openPaywall()}
                 />
               )}
             </View>
@@ -188,7 +188,7 @@ export default function LedgerScreen() {
               onPress={() => {
                 if (!isSovereignUser) {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setPaywallModalVisible(true);
+                  openPaywall();
                 }
               }}
             >
@@ -240,7 +240,7 @@ export default function LedgerScreen() {
           {!isSovereignUser && relapseHistory.length > 1 && (
             <SovereignLockPill
               size="sm"
-              onPress={() => setPaywallModalVisible(true)}
+              onPress={() => openPaywall()}
             />
           )}
         </View>
@@ -335,7 +335,7 @@ export default function LedgerScreen() {
                 activeOpacity={0.88}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setPaywallModalVisible(true);
+                  openPaywall();
                 }}
                 style={styles.archiveLockCardWrapper}
               >
@@ -375,11 +375,7 @@ export default function LedgerScreen() {
         )}
       </ScrollView>
 
-      {/* Sovereign Pass Paywall Modal */}
-      <PaywallModal
-        visible={paywallModalVisible}
-        onClose={() => setPaywallModalVisible(false)}
-      />
+      {/* Sovereign Pass paywall is the single global modal in app/_layout.tsx */}
     </SafeAreaView>
   );
 }

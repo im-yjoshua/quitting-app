@@ -34,12 +34,11 @@ import { AudioJournalCard } from '@/components/utilities/AudioJournalCard';
 import { ResetConfirmationModal } from '@/components/dashboard/ResetConfirmationModal';
 import { ImpulseNeutralizerModal } from '@/components/dashboard/ImpulseNeutralizerModal';
 import { BreathingSphereModal } from '@/components/dashboard/BreathingSphereModal';
-import { PaywallModal } from '@/components/monetization/PaywallModal';
 import { EmergencyModal } from '@/components/EmergencyModal';
 import { activateEmergencyShield } from '@/services/shield';
 
 export default function CommandDashboardScreen() {
-  const { refreshState, state, cleanDurationMs } = useAppData();
+  const { refreshState, state, cleanDurationMs, openPaywall } = useAppData();
   const { colors, theme } = useAppTheme();
   const { bestRecordMs, attemptCount } = state.profile;
   const { modal } = useLocalSearchParams<{ modal?: string }>();
@@ -51,7 +50,6 @@ export default function CommandDashboardScreen() {
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [urgeModalVisible, setUrgeModalVisible] = useState(false);
   const [breathingModalVisible, setBreathingModalVisible] = useState(false);
-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
 
   // Coordinate modal triggers (Air-gapped: no camera/optical modals)
   useEffect(() => {
@@ -66,7 +64,9 @@ export default function CommandDashboardScreen() {
     } else if (normalized === 'reset' || normalized === 'slip') {
       setResetModalVisible(true);
     } else if (normalized === 'paywall' || normalized === 'sovereign') {
-      setPaywallModalVisible(true);
+      // Deep-link trigger: open the single global paywall and clear the param.
+      openPaywall();
+      router.setParams({ modal: '' });
     }
   }, [modal]);
 
@@ -118,7 +118,7 @@ export default function CommandDashboardScreen() {
             activeOpacity={0.8}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setPaywallModalVisible(true);
+              openPaywall();
             }}
             style={[styles.headerProfileBadge, { backgroundColor: colors.glassSubtle, borderColor: colors.border }]}
             accessibilityLabel="View Profile and Current Run"
@@ -294,10 +294,6 @@ export default function CommandDashboardScreen() {
       <BreathingSphereModal
         visible={breathingModalVisible}
         onClose={() => dismissModal(setBreathingModalVisible)}
-      />
-      <PaywallModal
-        visible={paywallModalVisible}
-        onClose={() => dismissModal(setPaywallModalVisible)}
       />
     </SafeAreaView>
   );

@@ -95,6 +95,33 @@ export async function clearCachedEntitlement(): Promise<void> {
 }
 
 /**
+ * A cached entitlement unlocks premium ONLY if it was previously validated by
+ * RevenueCat (source === 'revenuecat'). Dev-sandbox synthesized entitlements
+ * (source === 'offline_cache' with isSovereign true) are test artifacts and must
+ * never unlock premium outside __DEV__.
+ */
+export function isValidatedEntitlement(
+  entitlement: SovereignEntitlement
+): boolean {
+  return entitlement.isSovereign === true && entitlement.source === 'revenuecat';
+}
+
+/**
+ * Offline entitlement trust rule — the single choke point for every
+ * "RevenueCat unavailable" path in this file:
+ * - __DEV__: honor whatever is cached (the dev sandbox may hold a simulated
+ *   entitlement from the DEV-ONLY purchase simulation below).
+ * - production: honor ONLY previously RevenueCat-validated entitlements.
+ */
+export async function getTrustedOfflineEntitlement(): Promise<SovereignEntitlement> {
+  const cached = await loadCachedEntitlement();
+  if (__DEV__) {
+    return cached;
+  }
+  return isValidatedEntitlement(cached) ? cached : DEFAULT_ENTITLEMENT;
+}
+
+/**
  * Initializes the RevenueCat SDK if API keys are provided.
  * Gracefully operates in fallback mode if running in environments
  * without active store capabilities.
@@ -215,19 +242,31 @@ export async function purchaseProduct(plan: PurchasePlan): Promise<PurchaseResul
   const ready = await initializePurchases();
 
   if (!ready) {
-    // Graceful offline/simulator mock purchase simulation for testing environments
-    console.log('[Purchases] Operating in simulated sandbox purchase mode for:', plan);
-    const simulatedEntitlement: SovereignEntitlement = {
-      isSovereign: true,
-      activePlan: plan,
-      expirationDate: plan === 'annual' ? Date.now() + 365 * 24 * 60 * 60 * 1000 : null,
-      latestPurchaseDate: Date.now(),
-      originalPurchaseDate: Date.now(),
-      source: 'offline_cache',
-      lastVerifiedAt: Date.now(),
+    if (__DEV__) {
+      // DEV-ONLY sandbox: RevenueCat isn't configured (e.g. Expo Go without a
+      // test key). Synthesize a successful purchase so the paywall UI can be
+      // tested end-to-end. __DEV__ is false in every production/release build,
+      // so this path can NEVER grant premium in production. Do not remove or
+      // weaken the __DEV__ guard.
+      console.log('[Purchases] DEV-ONLY simulated sandbox purchase for:', plan);
+      const simulatedEntitlement: SovereignEntitlement = {
+        isSovereign: true,
+        activePlan: plan,
+        expirationDate: plan === 'annual' ? Date.now() + 365 * 24 * 60 * 60 * 1000 : null,
+        latestPurchaseDate: Date.now(),
+        originalPurchaseDate: Date.now(),
+        source: 'offline_cache',
+        lastVerifiedAt: Date.now(),
+      };
+      await saveCachedEntitlement(simulatedEntitlement);
+      return { success: true, entitlement: simulatedEntitlement };
+    }
+    // Production with no RevenueCat bridge: fail honestly. Never synthesize
+    // premium — that would be a universal paywall bypass.
+    return {
+      success: false,
+      error: 'Purchases are unavailable right now. Check your connection and try again.',
     };
-    await saveCachedEntitlement(simulatedEntitlement);
-    return { success: true, entitlement: simulatedEntitlement };
   }
 
   try {
@@ -307,8 +346,10 @@ async function restorePurchasesWithoutPrompt(): Promise<PurchaseResult> {
   try {
     const ready = await initializePurchases();
     if (!ready) {
-      const cached = await loadCachedEntitlement();
-      return { success: cached.isSovereign, entitlement: cached };
+      // Offline: honor only a previously RevenueCat-validated entitlement.
+      // Synthesized dev-sandbox entitlements never unlock premium here.
+      const trusted = await getTrustedOfflineEntitlement();
+      return { success: trusted.isSovereign, entitlement: trusted };
     }
     const customerInfo = await Purchases.restorePurchases();
     const entitlement = extractEntitlementFromCustomerInfo(customerInfo);
@@ -347,14 +388,15 @@ export async function restorePurchasesWithBiometrics(): Promise<RestoreResult> {
     const ready = await initializePurchases();
 
     if (!ready) {
-      // In simulator/offline development, check cached entitlement
-      const cached = await loadCachedEntitlement();
-      if (cached.isSovereign) {
+      // Offline: honor only a previously RevenueCat-validated entitlement.
+      // Synthesized dev-sandbox entitlements never unlock premium here.
+      const trusted = await getTrustedOfflineEntitlement();
+      if (trusted.isSovereign) {
         return {
           success: true,
           restored: true,
           message: 'Local Sovereign entitlement confirmed.',
-          entitlement: cached,
+          entitlement: trusted,
         };
       }
       return {
@@ -400,14 +442,16 @@ export async function syncCustomerEntitlements(): Promise<SovereignEntitlement> 
   try {
     const ready = await initializePurchases();
     if (!ready) {
-      return loadCachedEntitlement();
+      // Offline: honor only a previously RevenueCat-validated entitlement.
+      return getTrustedOfflineEntitlement();
     }
     const customerInfo = await Purchases.getCustomerInfo();
     const entitlement = extractEntitlementFromCustomerInfo(customerInfo);
     await saveCachedEntitlement(entitlement);
     return entitlement;
   } catch (error) {
-    // If offline, silently keep cached entitlement
-    return loadCachedEntitlement();
+    // If offline, silently keep the trusted cached entitlement (see trust rule
+    // in getTrustedOfflineEntitlement — never a synthesized one in production).
+    return getTrustedOfflineEntitlement();
   }
 }

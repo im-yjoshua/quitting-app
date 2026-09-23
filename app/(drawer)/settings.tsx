@@ -20,7 +20,6 @@ import {
   AccentPaletteId,
 } from '@/context/ThemeContext';
 import { useAppData } from '@/context/AppDataContext';
-import { usePro } from '@/context/ProContext';
 import {
   getShieldState,
   requestFamilyControlsAuth,
@@ -90,12 +89,10 @@ export default function SettingsScreen() {
     toggleTheme();
   };
 
-  const { isPro, showPaywall } = usePro();
-
   const handleSelectAccent = async (nextAccent: AccentPaletteId) => {
-    if (!isPro && nextAccent !== 'emerald') {
+    if (!isSovereignUser && nextAccent !== 'emerald') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      showPaywall();
+      openPaywall();
       return;
     }
     Haptics.selectionAsync();
@@ -308,7 +305,7 @@ export default function SettingsScreen() {
                         {isSelected && (
                           <Ionicons name="checkmark" size={11} color="#FFFFFF" />
                         )}
-                        {!isSelected && !isPro && paletteKey !== 'emerald' && (
+                        {!isSelected && !isSovereignUser && paletteKey !== 'emerald' && (
                           <Ionicons name="lock-closed" size={10} color="#FFFFFF" />
                         )}
                       </View>

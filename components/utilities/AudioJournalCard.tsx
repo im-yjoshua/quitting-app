@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Audio } from '@/lib/expo-av-mock';
 import { useAppTheme } from '@/context/ThemeContext';
-import { usePro } from '@/context/ProContext';
+import { useAppData } from '@/context/AppDataContext';
 import {
   AudioJournalEntry,
   getAudioJournals,
@@ -22,7 +22,7 @@ import {
 
 export function AudioJournalCard() {
   const { colors, theme } = useAppTheme();
-  const { isPro, showPaywall } = usePro();
+  const { isSovereignUser, openPaywall } = useAppData();
   
   const [journals, setJournals] = useState<AudioJournalEntry[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -67,9 +67,9 @@ export function AudioJournalCard() {
   };
 
   const handleRecordPress = async () => {
-    if (!isPro && journals.length >= 1) {
+    if (!isSovereignUser && journals.length >= 1) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      showPaywall();
+      openPaywall();
       return;
     }
 

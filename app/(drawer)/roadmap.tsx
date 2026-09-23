@@ -25,7 +25,7 @@ import { useAppData } from '../../context/AppDataContext';
 import { useAppTheme } from '../../context/ThemeContext';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
-import { PaywallModal } from '../../components/monetization/PaywallModal';
+
 
 interface RecoveryStage {
   id: string;
@@ -92,11 +92,11 @@ const RECOVERY_STAGES: RecoveryStage[] = [
 ];
 
 export default function RoadmapScreen() {
-  const { cleanDurationMs, isSovereignUser } = useAppData();
+  const { cleanDurationMs, isSovereignUser, openPaywall } = useAppData();
   const { colors, theme } = useAppTheme();
   const navigation = useNavigation<DrawerNavigation>();
   const [expandedStageId, setExpandedStageId] = useState<string | null>(null);
-  const [paywallModalVisible, setPaywallModalVisible] = useState(false);
+
 
   // Derive active clean days
   const currentDaysClean = Math.max(1, Math.floor(cleanDurationMs / (1000 * 60 * 60 * 24)));
@@ -106,7 +106,7 @@ export default function RoadmapScreen() {
     const isGated = stage.stageNumber > 1 && !isSovereignUser;
     if (isGated) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setPaywallModalVisible(true);
+      openPaywall();
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -259,7 +259,7 @@ export default function RoadmapScreen() {
                       {isGated ? (
                         <SovereignLockPill
                           size="sm"
-                          onPress={() => setPaywallModalVisible(true)}
+                          onPress={() => openPaywall()}
                         />
                       ) : (
                         <Ionicons
@@ -296,11 +296,7 @@ export default function RoadmapScreen() {
         </View>
       </ScrollView>
 
-      {/* Sovereign Pass Paywall Modal */}
-      <PaywallModal
-        visible={paywallModalVisible}
-        onClose={() => setPaywallModalVisible(false)}
-      />
+      {/* Sovereign Pass paywall is the single global modal in app/_layout.tsx */}
     </SafeAreaView>
   );
 }
