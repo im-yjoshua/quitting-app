@@ -21,7 +21,7 @@ import {
   JournalEntry,
   getJournalEntries,
   saveJournalEntries,
-} from '@/services/storage';
+} from '@/services/legacyStorage';
 
 export function JournalCard() {
   const { colors, theme } = useAppTheme();

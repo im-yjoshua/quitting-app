@@ -1,0 +1,1291 @@
+diff --git a/components/utilities/ChallengesCard.tsx b/components/utilities/ChallengesCard.tsx
+index 1b7230a..85be2d7 100644
+--- a/components/utilities/ChallengesCard.tsx
++++ b/components/utilities/ChallengesCard.tsx
+@@ -15,7 +15,7 @@ import {
+   getChallenges,
+   saveChallenges,
+   getTodayDateString,
+-} from '@/services/storage';
++} from '@/services/legacyStorage';
+ 
+ export function ChallengesCard() {
+   const { colors, theme } = useAppTheme();
+diff --git a/components/utilities/JournalCard.tsx b/components/utilities/JournalCard.tsx
+index 623e218..c7c87be 100644
+--- a/components/utilities/JournalCard.tsx
++++ b/components/utilities/JournalCard.tsx
+@@ -21,7 +21,7 @@ import {
+   JournalEntry,
+   getJournalEntries,
+   saveJournalEntries,
+-} from '@/services/storage';
++} from '@/services/legacyStorage';
+ 
+ export function JournalCard() {
+   const { colors, theme } = useAppTheme();
+diff --git a/components/utilities/TodoListCard.tsx b/components/utilities/TodoListCard.tsx
+index 8f8b176..280bb8e 100644
+--- a/components/utilities/TodoListCard.tsx
++++ b/components/utilities/TodoListCard.tsx
+@@ -21,7 +21,7 @@ import {
+   TodoItem,
+   getTodos,
+   saveTodos,
+-} from '@/services/storage';
++} from '@/services/legacyStorage';
+ 
+ export function TodoListCard() {
+   const { colors, theme } = useAppTheme();
+diff --git a/context/AppDataContext.tsx b/context/AppDataContext.tsx
+index 48ce2c3..bf077c8 100644
+--- a/context/AppDataContext.tsx
++++ b/context/AppDataContext.tsx
+@@ -34,7 +34,7 @@ import {
+   loadStoredAppState,
+   saveStoredAppState,
+   forceFlushPendingWrites,
+-  shareTelemetryExport,
++  exportTelemetryBackup,
+   importTelemetryBackup,
+   DEFAULT_APP_STATE,
+ } from '../services/storage';
+@@ -428,7 +428,11 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
+   }, [syncCurrentTime]);
+ 
+   const exportTelemetry = useCallback(async () => {
+-    return await shareTelemetryExport();
++    const result = await exportTelemetryBackup();
++    if (result.success) {
++      return { success: true };
++    }
++    return { success: false, error: result.error };
+   }, []);
+ 
+   const importTelemetry = useCallback(
+diff --git a/context/StreakContext.tsx b/context/StreakContext.tsx
+index e51d564..fb7a3cc 100644
+--- a/context/StreakContext.tsx
++++ b/context/StreakContext.tsx
+@@ -9,7 +9,7 @@ import React, {
+ } from 'react';
+ import * as Haptics from 'expo-haptics';
+ import { Alert } from 'react-native';
+-import { getStartTimestamp, setStartTimestamp } from '@/services/storage';
++import { getStartTimestamp, setStartTimestamp } from '@/services/legacyStorage';
+ import {
+   breakDownDuration,
+   calculateConcentricDialMetrics,
+diff --git a/hooks/useStorageHydration.ts b/hooks/useStorageHydration.ts
+index 6765394..b625318 100644
+--- a/hooks/useStorageHydration.ts
++++ b/hooks/useStorageHydration.ts
+@@ -14,7 +14,7 @@ import {
+   appendRelapseRecord,
+   updateCircadianDay,
+   forceFlushPendingWrites,
+-  shareTelemetryExport,
++  exportTelemetryBackup,
+   importTelemetryBackup,
+   DEFAULT_APP_STATE,
+ } from '../services/storage';
+@@ -135,7 +135,11 @@ export function useStorageHydration(): StorageHydrationResult {
+ 
+   // Air-gapped export via native Share dialog
+   const exportTelemetry = useCallback(async () => {
+-    return await shareTelemetryExport();
++    const result = await exportTelemetryBackup();
++    if (result.success) {
++      return { success: true };
++    }
++    return { success: false, error: result.error };
+   }, []);
+ 
+   // Air-gapped backup import
+diff --git a/package-lock.json b/package-lock.json
+index 604eeba..4b0ac90 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -951,6 +951,38 @@
+         "@babel/core": "^7.0.0-0"
+       }
+     },
++    "node_modules/@babel/plugin-transform-react-jsx-self": {
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/plugin-transform-react-jsx-self/-/plugin-transform-react-jsx-self-7.29.7.tgz",
++      "integrity": "sha512-TL0hMc9xzy86VD31nUiwzd5otRAcyEPcsegCxolO0PvcXuH1v0kECe/UIznYFihpkvU5wg/jk4v0TTEFfm53fw==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@babel/helper-plugin-utils": "^7.29.7"
++      },
++      "engines": {
++        "node": ">=6.9.0"
++      },
++      "peerDependencies": {
++        "@babel/core": "^7.0.0-0"
++      }
++    },
++    "node_modules/@babel/plugin-transform-react-jsx-source": {
++      "version": "7.29.7",
++      "resolved": "https://registry.npmjs.org/@babel/plugin-transform-react-jsx-source/-/plugin-transform-react-jsx-source-7.29.7.tgz",
++      "integrity": "sha512-06IyK09H3wi4cGbhDBwp5gUGo0IKtnYa8tyTiephirPCK6fbobVGiXMMI5zLQ4aKEYP3wZ3ArU44o+8KMrSG/Q==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@babel/helper-plugin-utils": "^7.29.7"
++      },
++      "engines": {
++        "node": ">=6.9.0"
++      },
++      "peerDependencies": {
++        "@babel/core": "^7.0.0-0"
++      }
++    },
+     "node_modules/@babel/plugin-transform-react-pure-annotations": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/plugin-transform-react-pure-annotations/-/plugin-transform-react-pure-annotations-7.29.7.tgz",
+@@ -967,6 +999,22 @@
+         "@babel/core": "^7.0.0-0"
+       }
+     },
++    "node_modules/@babel/plugin-transform-regenerator": {
++      "version": "7.29.8",
++      "resolved": "https://registry.npmjs.org/@babel/plugin-transform-regenerator/-/plugin-transform-regenerator-7.29.8.tgz",
++      "integrity": "sha512-0UpIXPtdDtMXfnV2OJAVMLpj3H/92vmkA6lpSRakmycJvj3VUy6Xs1dM8tXRugupykr5WB+LpiVl0J8LMVg2mg==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@babel/helper-plugin-utils": "^7.29.7"
++      },
++      "engines": {
++        "node": ">=6.9.0"
++      },
++      "peerDependencies": {
++        "@babel/core": "^7.0.0-0"
++      }
++    },
+     "node_modules/@babel/plugin-transform-runtime": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/plugin-transform-runtime/-/plugin-transform-runtime-7.29.7.tgz",
+@@ -2650,6 +2698,77 @@
+         "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
+       }
+     },
++    "node_modules/@react-native/babel-plugin-codegen": {
++      "version": "0.86.3",
++      "resolved": "https://registry.npmjs.org/@react-native/babel-plugin-codegen/-/babel-plugin-codegen-0.86.3.tgz",
++      "integrity": "sha512-O6Xza4JBGPIU8J7YbKTyBoYL4thpy8jMW/oaLDWdAyOwYHKIjK47pAL5HUEbOe2bWz2PEKjbYRF2ApkJv1ottQ==",
++      "license": "MIT",
++      "dependencies": {
++        "@babel/traverse": "^7.29.0",
++        "@react-native/codegen": "0.86.3"
++      },
++      "engines": {
++        "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
++      }
++    },
++    "node_modules/@react-native/babel-preset": {
++      "version": "0.86.3",
++      "resolved": "https://registry.npmjs.org/@react-native/babel-preset/-/babel-preset-0.86.3.tgz",
++      "integrity": "sha512-/eqs/Hy9RZRcjdcs4wj3Cqmxvtb3NM5g+Uuh1RIvsjynMO8PRsrVWWLWgBcZL/jYUo+ogXd2NFB0W8L5Bg89xw==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@babel/core": "^7.25.2",
++        "@babel/plugin-proposal-export-default-from": "^7.24.7",
++        "@babel/plugin-syntax-dynamic-import": "^7.8.3",
++        "@babel/plugin-syntax-export-default-from": "^7.24.7",
++        "@babel/plugin-syntax-nullish-coalescing-operator": "^7.8.3",
++        "@babel/plugin-syntax-optional-chaining": "^7.8.3",
++        "@babel/plugin-transform-async-generator-functions": "^7.25.4",
++        "@babel/plugin-transform-async-to-generator": "^7.24.7",
++        "@babel/plugin-transform-block-scoping": "^7.25.0",
++        "@babel/plugin-transform-class-properties": "^7.25.4",
++        "@babel/plugin-transform-classes": "^7.25.4",
++        "@babel/plugin-transform-destructuring": "^7.24.8",
++        "@babel/plugin-transform-flow-strip-types": "^7.25.2",
++        "@babel/plugin-transform-for-of": "^7.24.7",
++        "@babel/plugin-transform-modules-commonjs": "^7.24.8",
++        "@babel/plugin-transform-named-capturing-groups-regex": "^7.24.7",
++        "@babel/plugin-transform-nullish-coalescing-operator": "^7.24.7",
++        "@babel/plugin-transform-optional-catch-binding": "^7.24.7",
++        "@babel/plugin-transform-optional-chaining": "^7.24.8",
++        "@babel/plugin-transform-private-methods": "^7.24.7",
++        "@babel/plugin-transform-private-property-in-object": "^7.24.7",
++        "@babel/plugin-transform-react-display-name": "^7.24.7",
++        "@babel/plugin-transform-react-jsx": "^7.25.2",
++        "@babel/plugin-transform-react-jsx-self": "^7.24.7",
++        "@babel/plugin-transform-react-jsx-source": "^7.24.7",
++        "@babel/plugin-transform-regenerator": "^7.24.7",
++        "@babel/plugin-transform-runtime": "^7.24.7",
++        "@babel/plugin-transform-typescript": "^7.25.2",
++        "@babel/plugin-transform-unicode-regex": "^7.24.7",
++        "@react-native/babel-plugin-codegen": "0.86.3",
++        "babel-plugin-syntax-hermes-parser": "0.36.0",
++        "babel-plugin-transform-flow-enums": "^0.0.2",
++        "react-refresh": "^0.14.0"
++      },
++      "engines": {
++        "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
++      },
++      "peerDependencies": {
++        "@babel/core": "*"
++      }
++    },
++    "node_modules/@react-native/babel-preset/node_modules/babel-plugin-syntax-hermes-parser": {
++      "version": "0.36.0",
++      "resolved": "https://registry.npmjs.org/babel-plugin-syntax-hermes-parser/-/babel-plugin-syntax-hermes-parser-0.36.0.tgz",
++      "integrity": "sha512-LhD0xdoedDw7ansQgXbB2DADLZIK/LRXuWNBPuVzMc5S2WK5GyT89tCM+cQzxFGO0mGyLK6D5TrVOJJzAoDy8Q==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "hermes-parser": "0.36.0"
++      }
++    },
+     "node_modules/@react-native/codegen": {
+       "version": "0.86.3",
+       "resolved": "https://registry.npmjs.org/@react-native/codegen/-/codegen-0.86.3.tgz",
+@@ -2786,6 +2905,41 @@
+         "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
+       }
+     },
++    "node_modules/@react-native/metro-babel-transformer": {
++      "version": "0.86.3",
++      "resolved": "https://registry.npmjs.org/@react-native/metro-babel-transformer/-/metro-babel-transformer-0.86.3.tgz",
++      "integrity": "sha512-0nlwVkG0uT9o72nrGTKUz/IqDnCkM4zE0ihe4r+OJcxH93yBdDm58AXJ3EXZeSjv3osHEFXU7ceajdZiS34mTw==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@babel/core": "^7.25.2",
++        "@react-native/babel-preset": "0.86.3",
++        "hermes-parser": "0.36.0",
++        "nullthrows": "^1.1.1"
++      },
++      "engines": {
++        "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
++      },
++      "peerDependencies": {
++        "@babel/core": "*"
++      }
++    },
++    "node_modules/@react-native/metro-config": {
++      "version": "0.86.3",
++      "resolved": "https://registry.npmjs.org/@react-native/metro-config/-/metro-config-0.86.3.tgz",
++      "integrity": "sha512-qdzDMepV2xdUhsO4XC7idnnbt8K6+Hd59AjeK9y4KS86fxSQq5oL0TAbqUuajDGR7beNQoYTuS6AowN/zP0oaQ==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "@react-native/js-polyfills": "0.86.3",
++        "@react-native/metro-babel-transformer": "0.86.3",
++        "metro-config": "^0.84.3",
++        "metro-runtime": "^0.84.3"
++      },
++      "engines": {
++        "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
++      }
++    },
+     "node_modules/@react-native/normalize-colors": {
+       "version": "0.86.3",
+       "resolved": "https://registry.npmjs.org/@react-native/normalize-colors/-/normalize-colors-0.86.3.tgz",
+@@ -3318,19 +3472,6 @@
+         }
+       }
+     },
+-    "node_modules/babel-preset-expo/node_modules/@react-native/babel-plugin-codegen": {
+-      "version": "0.86.3",
+-      "resolved": "https://registry.npmjs.org/@react-native/babel-plugin-codegen/-/babel-plugin-codegen-0.86.3.tgz",
+-      "integrity": "sha512-O6Xza4JBGPIU8J7YbKTyBoYL4thpy8jMW/oaLDWdAyOwYHKIjK47pAL5HUEbOe2bWz2PEKjbYRF2ApkJv1ottQ==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "@babel/traverse": "^7.29.0",
+-        "@react-native/codegen": "0.86.3"
+-      },
+-      "engines": {
+-        "node": "^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0"
+-      }
+-    },
+     "node_modules/badgin": {
+       "version": "1.2.3",
+       "resolved": "https://registry.npmjs.org/badgin/-/badgin-1.2.3.tgz",
+@@ -6659,6 +6800,26 @@
+         }
+       }
+     },
++    "node_modules/react-dom": {
++      "version": "19.3.0",
++      "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-19.3.0.tgz",
++      "integrity": "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==",
++      "license": "MIT",
++      "peer": true,
++      "dependencies": {
++        "scheduler": "^0.28.0"
++      },
++      "peerDependencies": {
++        "react": "^19.3.0"
++      }
++    },
++    "node_modules/react-dom/node_modules/scheduler": {
++      "version": "0.28.0",
++      "resolved": "https://registry.npmjs.org/scheduler/-/scheduler-0.28.0.tgz",
++      "integrity": "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==",
++      "license": "MIT",
++      "peer": true
++    },
+     "node_modules/react-fast-compare": {
+       "version": "3.2.2",
+       "resolved": "https://registry.npmjs.org/react-fast-compare/-/react-fast-compare-3.2.2.tgz",
+@@ -7729,7 +7890,7 @@
+       "version": "6.0.3",
+       "resolved": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz",
+       "integrity": "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==",
+-      "dev": true,
++      "devOptional": true,
+       "license": "Apache-2.0",
+       "bin": {
+         "tsc": "bin/tsc",
+diff --git a/scratch/append.js b/scratch/append.js
+deleted file mode 100644
+index 8fe7939..0000000
+--- a/scratch/append.js
++++ /dev/null
+@@ -1,83 +0,0 @@
+-const fs = require('fs');
+-const path = 'services/storage.ts';
+-let content = fs.readFileSync(path, 'utf8');
+-
+-const additional = `
+-import { AppStateData, UserProfile, RelapseRecord, CircadianDayRecord, CircadianHistory } from '../types/app';
+-
+-export const DEFAULT_APP_STATE: AppStateData = {
+-  profile: {
+-    habitTitle: 'Digital Freedom',
+-    habitCategory: 'substance',
+-    startDate: Date.now(),
+-    bestRecordMs: 0,
+-    attemptCount: 1,
+-    weeklyCostEstimated: 0,
+-    dailyMinutesWasted: 0,
+-    auraScore: 0,
+-    tierStatus: 'Initiate',
+-    isOnboarded: false,
+-    biometricsEnabled: false,
+-  },
+-  relapseHistory: [],
+-  interventionState: {
+-    lastCompletedAt: null,
+-    cooldownUntil: null,
+-  },
+-  circadianHistory: {},
+-  activeChallengeId: null,
+-};
+-
+-export async function loadStoredAppState(): Promise<AppStateData> {
+-  return storage.get<AppStateData>('@sovereign/app_state', DEFAULT_APP_STATE);
+-}
+-
+-export async function saveStoredAppState(state: AppStateData): Promise<boolean> {
+-  return storage.set<AppStateData>('@sovereign/app_state', state);
+-}
+-
+-export async function updateUserProfile(updater: (prev: UserProfile) => UserProfile): Promise<UserProfile> {
+-  const state = await loadStoredAppState();
+-  const nextProfile = updater(state.profile);
+-  await saveStoredAppState({ ...state, profile: nextProfile });
+-  return nextProfile;
+-}
+-
+-export async function appendRelapseRecord(record: RelapseRecord): Promise<RelapseRecord[]> {
+-  const state = await loadStoredAppState();
+-  const nextHistory = [record, ...state.relapseHistory];
+-  await saveStoredAppState({ ...state, relapseHistory: nextHistory });
+-  return nextHistory;
+-}
+-
+-export async function updateCircadianDay(dateKey: string, updater: (prev: CircadianDayRecord) => CircadianDayRecord): Promise<CircadianHistory> {
+-  const state = await loadStoredAppState();
+-  const existing = state.circadianHistory[dateKey] || {
+-    dateString: dateKey,
+-    amCompleted: false,
+-    amCompletedAt: null,
+-    pmCompleted: false,
+-    pmCompletedAt: null,
+-    multiplierActive: false,
+-  };
+-  const updatedDay = updater(existing);
+-  const nextHistory = { ...state.circadianHistory, [dateKey]: updatedDay };
+-  await saveStoredAppState({ ...state, circadianHistory: nextHistory });
+-  return nextHistory;
+-}
+-
+-export async function forceFlushPendingWrites(): Promise<void> {
+-  return Promise.resolve();
+-}
+-
+-export async function shareTelemetryExport(): Promise<{ success: boolean; error?: string }> {
+-  return { success: true };
+-}
+-
+-export async function importTelemetryBackup(json: string): Promise<{ success: boolean; data?: AppStateData; error?: string }> {
+-  return { success: false, error: 'Not implemented' };
+-}
+-`;
+-
+-fs.writeFileSync(path, content + additional);
+-console.log('Appended missing exports to storage.ts');
+diff --git a/services/legacyStorage.ts b/services/legacyStorage.ts
+new file mode 100644
+index 0000000..b7b942f
+--- /dev/null
++++ b/services/legacyStorage.ts
+@@ -0,0 +1,241 @@
++import AsyncStorage from '@react-native-async-storage/async-storage';
++
++/**
++ * @deprecated Legacy key/value storage (pre-envelope format).
++ *
++ * Kept only for the dashboard utility cards that still read these keys
++ * (JournalCard, TodoListCard, ChallengesCard) and the unused StreakContext.
++ * Do NOT add new keys here — new persistence belongs in services/storage.ts,
++ * which is envelope-backed with checksums, schema versioning, and migration.
++ * This module is scheduled for removal once its remaining readers are migrated.
++ */
++
++/**
++ * Sovereign Centralized Storage Namespace Keys
++ */
++const STORAGE_KEYS = {
++  START_TIMESTAMP: '@sovereign/start_timestamp',
++  JOURNAL_ENTRIES: '@sovereign/journal_entries',
++  TODOS: '@sovereign/todos',
++  CHALLENGES: '@sovereign/challenges',
++  THEME_ACCENT: '@sovereign/theme_accent',
++} as const;
++
++/**
++ * Core Data Models
++ */
++export interface JournalEntry {
++  id: string;
++  timestamp: string; // ISO string or human-formatted time
++  title: string;
++  body: string;
++}
++
++export interface TodoItem {
++  id: string;
++  text: string;
++  completed: boolean;
++  createdAt: number;
++}
++
++export interface DailyChallenge {
++  id: string;
++  title: string;
++  completed: boolean;
++  lastCompletedDate?: string; // Format: YYYY-MM-DD
++}
++
++/**
++ * Generic Safe Storage Wrapper
++ */
++const storage = {
++  /**
++   * Safely retrieve and parse item from AsyncStorage
++   */
++  async get<T>(key: string, defaultValue: T): Promise<T> {
++    try {
++      const raw = await AsyncStorage.getItem(key);
++      if (raw === null || raw === undefined) {
++        return defaultValue;
++      }
++      return JSON.parse(raw) as T;
++    } catch (error) {
++      console.warn(`[Storage] Failed to read key "${key}":`, error);
++      return defaultValue;
++    }
++  },
++
++  /**
++   * Safely serialize and persist item to AsyncStorage
++   */
++  async set<T>(key: string, value: T): Promise<boolean> {
++    try {
++      const serialized = JSON.stringify(value);
++      await AsyncStorage.setItem(key, serialized);
++      return true;
++    } catch (error) {
++      console.warn(`[Storage] Failed to write key "${key}":`, error);
++      return false;
++    }
++  },
++
++  /**
++   * Safely retrieve raw string value
++   */
++  async getString(key: string, defaultValue: string = ''): Promise<string> {
++    try {
++      const val = await AsyncStorage.getItem(key);
++      return val ?? defaultValue;
++    } catch (error) {
++      console.warn(`[Storage] Failed to read string key "${key}":`, error);
++      return defaultValue;
++    }
++  },
++
++  /**
++   * Safely persist raw string value
++   */
++  async setString(key: string, value: string): Promise<boolean> {
++    try {
++      await AsyncStorage.setItem(key, value);
++      return true;
++    } catch (error) {
++      console.warn(`[Storage] Failed to write string key "${key}":`, error);
++      return false;
++    }
++  },
++
++  /**
++   * Remove single key
++   */
++  async remove(key: string): Promise<boolean> {
++    try {
++      await AsyncStorage.removeItem(key);
++      return true;
++    } catch (error) {
++      console.warn(`[Storage] Failed to remove key "${key}":`, error);
++      return false;
++    }
++  },
++
++  /**
++   * Clear all keys in namespace
++   */
++  async clearAllSovereignData(): Promise<boolean> {
++    try {
++      await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
++      return true;
++    } catch (error) {
++      console.warn('[Storage] Failed to clear sovereign data:', error);
++      return false;
++    }
++  },
++};
++
++/**
++ * Typed Convenience Getters & Setters
++ */
++
++// 1. Recovery Start Timestamp
++export async function getStartTimestamp(): Promise<string> {
++  const stored = await storage.getString(STORAGE_KEYS.START_TIMESTAMP);
++  if (!stored) {
++    const defaultStart = new Date().toISOString();
++    await storage.setString(STORAGE_KEYS.START_TIMESTAMP, defaultStart);
++    return defaultStart;
++  }
++  return stored;
++}
++
++export async function setStartTimestamp(isoString: string): Promise<boolean> {
++  return storage.setString(STORAGE_KEYS.START_TIMESTAMP, isoString);
++}
++
++// 2. Journal Reflections
++export const DEFAULT_JOURNAL_ENTRIES: JournalEntry[] = [
++  {
++    id: '1',
++    timestamp: new Date().toLocaleDateString('en-US', {
++      month: 'short',
++      day: 'numeric',
++      hour: '2-digit',
++      minute: '2-digit',
++    }),
++    title: 'Baseline Grounding',
++    body: 'Initiated the recovery protocol. Mind is vigilant, respiratory baseline calm.',
++  },
++];
++
++export async function getJournalEntries(): Promise<JournalEntry[]> {
++  return storage.get<JournalEntry[]>(STORAGE_KEYS.JOURNAL_ENTRIES, DEFAULT_JOURNAL_ENTRIES);
++}
++
++export async function saveJournalEntries(entries: JournalEntry[]): Promise<boolean> {
++  return storage.set<JournalEntry[]>(STORAGE_KEYS.JOURNAL_ENTRIES, entries);
++}
++
++// 3. To-Do Items
++export const DEFAULT_TODOS: TodoItem[] = [
++  { id: '1', text: '10-minute morning box breathing', completed: false, createdAt: Date.now() - 3600000 },
++  { id: '2', text: 'Cold water facial plunge during urge', completed: false, createdAt: Date.now() - 1800000 },
++  { id: '3', text: 'Zero screens 45m before sleep', completed: false, createdAt: Date.now() },
++];
++
++export async function getTodos(): Promise<TodoItem[]> {
++  return storage.get<TodoItem[]>(STORAGE_KEYS.TODOS, DEFAULT_TODOS);
++}
++
++export async function saveTodos(todos: TodoItem[]): Promise<boolean> {
++  return storage.set<TodoItem[]>(STORAGE_KEYS.TODOS, todos);
++}
++
++// 4. Daily Challenges
++export const DEFAULT_CHALLENGES: DailyChallenge[] = [
++  { id: '1', title: '5-minute deep box breathing', completed: false },
++  { id: '2', title: 'Hydrate with 2L clean water', completed: false },
++  { id: '3', title: '20-minute physical walk without phone', completed: false },
++  { id: '4', title: 'Zero adult / triggering website visits', completed: false },
++];
++
++export function getTodayDateString(): string {
++  const now = new Date();
++  const year = now.getFullYear();
++  const month = (now.getMonth() + 1).toString().padStart(2, '0');
++  const day = now.getDate().toString().padStart(2, '0');
++  return `${year}-${month}-${day}`;
++}
++
++export async function getChallenges(): Promise<DailyChallenge[]> {
++  const challenges = await storage.get<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, DEFAULT_CHALLENGES);
++  const todayStr = getTodayDateString();
++
++  // Reset checkboxes if last completed date is not today
++  let hasChanges = false;
++  const synchronized = challenges.map((challenge) => {
++    if (challenge.completed && challenge.lastCompletedDate !== todayStr) {
++      hasChanges = true;
++      return { ...challenge, completed: false };
++    }
++    return challenge;
++  });
++
++  if (hasChanges) {
++    await storage.set<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, synchronized);
++  }
++
++  return synchronized;
++}
++
++export async function saveChallenges(challenges: DailyChallenge[]): Promise<boolean> {
++  return storage.set<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, challenges);
++}
++
++// 5. Theme Accent
++export async function getThemeAccent(): Promise<string | null> {
++  const raw = await storage.getString(STORAGE_KEYS.THEME_ACCENT);
++  return raw || null;
++}
++
++export async function setThemeAccent(hex: string): Promise<boolean> {
++  return storage.setString(STORAGE_KEYS.THEME_ACCENT, hex);
++}
+diff --git a/services/storage.ts b/services/storage.ts
+index 3711793..06763ee 100644
+--- a/services/storage.ts
++++ b/services/storage.ts
+@@ -1,284 +1,283 @@
+ import AsyncStorage from '@react-native-async-storage/async-storage';
++import { Platform } from 'react-native';
++import {
++  AppStateData,
++  UserProfile,
++  RelapseRecord,
++  CircadianDayRecord,
++  CircadianHistory,
++  CURRENT_SCHEMA_VERSION,
++  SerializationResult,
++  StorageEnvelope,
++  TelemetryExportPayload,
++  isCircadianHistory,
++  isRelapseRecord,
++  isStorageEnvelope,
++  isTelemetryExportPayload,
++  isUserProfile,
++} from '../types/app';
++
++// ---------------------------------------------------------------------------
++// Keys
++// ---------------------------------------------------------------------------
++
++/** Primary key for the envelope-backed app state (unchanged from v1 installs). */
++const APP_STATE_KEY = '@sovereign/app_state';
++
++/** Prefix for quarantined corrupt payloads: `${CORRUPT_QUARANTINE_PREFIX}<epochMs>`. */
++const CORRUPT_QUARANTINE_PREFIX = '@sovereign/app_state.corrupt.';
++
++// ---------------------------------------------------------------------------
++// Defaults
++// ---------------------------------------------------------------------------
+ 
+-/**
+- * Sovereign Centralized Storage Namespace Keys
+- */
+-export const STORAGE_KEYS = {
+-  START_TIMESTAMP: '@sovereign/start_timestamp',
+-  JOURNAL_ENTRIES: '@sovereign/journal_entries',
+-  TODOS: '@sovereign/todos',
+-  CHALLENGES: '@sovereign/challenges',
+-  THEME_ACCENT: '@sovereign/theme_accent',
+-} as const;
+-
+-export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS];
+-
+-/**
+- * Core Data Models
+- */
+-export interface JournalEntry {
+-  id: string;
+-  timestamp: string; // ISO string or human-formatted time
+-  title: string;
+-  body: string;
+-}
+-
+-export interface TodoItem {
+-  id: string;
+-  text: string;
+-  completed: boolean;
+-  createdAt: number;
+-}
+-
+-export interface DailyChallenge {
+-  id: string;
+-  title: string;
+-  completed: boolean;
+-  lastCompletedDate?: string; // Format: YYYY-MM-DD
+-}
+-
+-/**
+- * Generic Safe Storage Wrapper
+- */
+-export const storage = {
+-  /**
+-   * Safely retrieve and parse item from AsyncStorage
+-   */
+-  async get<T>(key: string, defaultValue: T): Promise<T> {
+-    try {
+-      const raw = await AsyncStorage.getItem(key);
+-      if (raw === null || raw === undefined) {
+-        return defaultValue;
+-      }
+-      return JSON.parse(raw) as T;
+-    } catch (error) {
+-      console.warn(`[Storage] Failed to read key "${key}":`, error);
+-      return defaultValue;
+-    }
+-  },
+-
+-  /**
+-   * Safely serialize and persist item to AsyncStorage
+-   */
+-  async set<T>(key: string, value: T): Promise<boolean> {
+-    try {
+-      const serialized = JSON.stringify(value);
+-      await AsyncStorage.setItem(key, serialized);
+-      return true;
+-    } catch (error) {
+-      console.warn(`[Storage] Failed to write key "${key}":`, error);
+-      return false;
+-    }
+-  },
+-
+-  /**
+-   * Safely retrieve raw string value
+-   */
+-  async getString(key: string, defaultValue: string = ''): Promise<string> {
+-    try {
+-      const val = await AsyncStorage.getItem(key);
+-      return val ?? defaultValue;
+-    } catch (error) {
+-      console.warn(`[Storage] Failed to read string key "${key}":`, error);
+-      return defaultValue;
+-    }
+-  },
+-
+-  /**
+-   * Safely persist raw string value
+-   */
+-  async setString(key: string, value: string): Promise<boolean> {
+-    try {
+-      await AsyncStorage.setItem(key, value);
+-      return true;
+-    } catch (error) {
+-      console.warn(`[Storage] Failed to write string key "${key}":`, error);
+-      return false;
+-    }
+-  },
+-
+-  /**
+-   * Remove single key
+-   */
+-  async remove(key: string): Promise<boolean> {
+-    try {
+-      await AsyncStorage.removeItem(key);
+-      return true;
+-    } catch (error) {
+-      console.warn(`[Storage] Failed to remove key "${key}":`, error);
+-      return false;
+-    }
++export const DEFAULT_APP_STATE: AppStateData = {
++  profile: {
++    habitTitle: 'Digital Freedom',
++    habitCategory: 'digital_distraction',
++    startDate: Date.now(),
++    bestRecordMs: 0,
++    attemptCount: 1,
++    weeklyCostEstimated: 0,
++    dailyMinutesWasted: 0,
++    auraScore: 0,
++    tierStatus: 'Initiate',
++    isOnboarded: false,
++    biometricsEnabled: false,
+   },
+-
+-  /**
+-   * Clear all keys in namespace
+-   */
+-  async clearAllSovereignData(): Promise<boolean> {
+-    try {
+-      await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+-      return true;
+-    } catch (error) {
+-      console.warn('[Storage] Failed to clear sovereign data:', error);
+-      return false;
+-    }
++  relapseHistory: [],
++  interventionState: {
++    lastCompletedAt: null,
++    cooldownUntil: null,
+   },
++  circadianHistory: {},
++  activeChallengeId: null,
+ };
+ 
++// ---------------------------------------------------------------------------
++// Integrity primitives
++// ---------------------------------------------------------------------------
++
+ /**
+- * Typed Convenience Getters & Setters
++ * FNV-1a 32-bit hash, hex-encoded. Used as a corruption-detection checksum for
++ * stored payloads. This is an integrity check, not cryptography — it catches
++ * truncated writes, manual tampering, and restore glitches, nothing more.
+  */
+-
+-// 1. Recovery Start Timestamp
+-export async function getStartTimestamp(): Promise<string> {
+-  const stored = await storage.getString(STORAGE_KEYS.START_TIMESTAMP);
+-  if (!stored) {
+-    const defaultStart = new Date().toISOString();
+-    await storage.setString(STORAGE_KEYS.START_TIMESTAMP, defaultStart);
+-    return defaultStart;
++function fnv1a32(input: string): string {
++  let hash = 0x811c9dc5;
++  for (let i = 0; i < input.length; i++) {
++    hash ^= input.charCodeAt(i);
++    hash = Math.imul(hash, 0x01000193);
+   }
+-  return stored;
++  return (hash >>> 0).toString(16).padStart(8, '0');
+ }
+ 
+-export async function setStartTimestamp(isoString: string): Promise<boolean> {
+-  return storage.setString(STORAGE_KEYS.START_TIMESTAMP, isoString);
++/**
++ * Runtime guard for a full AppStateData snapshot. Composes the granular guards
++ * from types/app.ts so stored payloads are validated before the app trusts them.
++ */
++function isAppStateData(raw: unknown): raw is AppStateData {
++  if (!raw || typeof raw !== 'object') return false;
++  const s = raw as Partial<AppStateData>;
++  const intervention = s.interventionState as
++    | { lastCompletedAt?: unknown; cooldownUntil?: unknown }
++    | undefined;
++  if (!intervention) return false;
++  const { lastCompletedAt, cooldownUntil } = intervention;
++  return (
++    isUserProfile(s.profile) &&
++    Array.isArray(s.relapseHistory) &&
++    s.relapseHistory.every(isRelapseRecord) &&
++    (lastCompletedAt === null ||
++      (typeof lastCompletedAt === 'number' && !isNaN(lastCompletedAt))) &&
++    (cooldownUntil === null ||
++      (typeof cooldownUntil === 'number' && !isNaN(cooldownUntil))) &&
++    isCircadianHistory(s.circadianHistory) &&
++    (s.activeChallengeId === null || typeof s.activeChallengeId === 'string')
++  );
+ }
+ 
+-// 2. Journal Reflections
+-export const DEFAULT_JOURNAL_ENTRIES: JournalEntry[] = [
+-  {
+-    id: '1',
+-    timestamp: new Date().toLocaleDateString('en-US', {
+-      month: 'short',
+-      day: 'numeric',
+-      hour: '2-digit',
+-      minute: '2-digit',
+-    }),
+-    title: 'Baseline Grounding',
+-    body: 'Initiated the recovery protocol. Mind is vigilant, respiratory baseline calm.',
+-  },
+-];
+-
+-export async function getJournalEntries(): Promise<JournalEntry[]> {
+-  return storage.get<JournalEntry[]>(STORAGE_KEYS.JOURNAL_ENTRIES, DEFAULT_JOURNAL_ENTRIES);
++/**
++ * Versioned migration hook. Raw pre-envelope payloads and older envelopes
++ * converge here before being re-saved in the current format.
++ */
++function migrateAppState(state: AppStateData, fromVersion: number): AppStateData {
++  // v1 -> v2: the envelope itself is the v2 format; the AppStateData shape did
++  // not change, so there is nothing to rewrite. Add versioned branches here
++  // when the shape changes in the future.
++  void fromVersion;
++  return state;
+ }
+ 
+-export async function saveJournalEntries(entries: JournalEntry[]): Promise<boolean> {
+-  return storage.set<JournalEntry[]>(STORAGE_KEYS.JOURNAL_ENTRIES, entries);
++async function writeEnvelope(state: AppStateData): Promise<boolean> {
++  try {
++    const dataJson = JSON.stringify(state);
++    const envelope: StorageEnvelope<AppStateData> = {
++      schemaVersion: CURRENT_SCHEMA_VERSION,
++      savedAt: Date.now(),
++      checksum: fnv1a32(dataJson),
++      data: state,
++    };
++    await AsyncStorage.setItem(APP_STATE_KEY, JSON.stringify(envelope));
++    return true;
++  } catch (error) {
++    console.warn('[Storage] Failed to write app state envelope:', error);
++    return false;
++  }
+ }
+ 
+-// 3. To-Do Items
+-export const DEFAULT_TODOS: TodoItem[] = [
+-  { id: '1', text: '10-minute morning box breathing', completed: false, createdAt: Date.now() - 3600000 },
+-  { id: '2', text: 'Cold water facial plunge during urge', completed: false, createdAt: Date.now() - 1800000 },
+-  { id: '3', text: 'Zero screens 45m before sleep', completed: false, createdAt: Date.now() },
+-];
+-
+-export async function getTodos(): Promise<TodoItem[]> {
+-  return storage.get<TodoItem[]>(STORAGE_KEYS.TODOS, DEFAULT_TODOS);
++/**
++ * Moves an unreadable payload aside under a timestamped quarantine key and
++ * removes the corrupt primary key, so a bad write can never poison every
++ * subsequent launch. The original bytes are preserved for manual recovery.
++ */
++async function quarantineCorruptPayload(raw: string): Promise<string> {
++  const quarantineKey = `${CORRUPT_QUARANTINE_PREFIX}${Date.now()}`;
++  try {
++    await AsyncStorage.setItem(quarantineKey, raw);
++    await AsyncStorage.removeItem(APP_STATE_KEY);
++  } catch (error) {
++    console.warn('[Storage] Failed to quarantine corrupt payload:', error);
++  }
++  return quarantineKey;
+ }
+ 
+-export async function saveTodos(todos: TodoItem[]): Promise<boolean> {
+-  return storage.set<TodoItem[]>(STORAGE_KEYS.TODOS, todos);
++// ---------------------------------------------------------------------------
++// Loading
++// ---------------------------------------------------------------------------
++
++export type StorageLoadStatus =
++  | 'ok'
++  | 'fresh-install'
++  | 'migrated-from-legacy'
++  | 'corrupted-quarantined';
++
++export interface StorageLoadResult {
++  readonly status: StorageLoadStatus;
++  readonly state: AppStateData;
++  /** Present only when status is 'corrupted-quarantined'. */
++  readonly quarantinedKey?: string;
+ }
+ 
+-// 4. Daily Challenges
+-export const DEFAULT_CHALLENGES: DailyChallenge[] = [
+-  { id: '1', title: '5-minute deep box breathing', completed: false },
+-  { id: '2', title: 'Hydrate with 2L clean water', completed: false },
+-  { id: '3', title: '20-minute physical walk without phone', completed: false },
+-  { id: '4', title: 'Zero adult / triggering website visits', completed: false },
+-];
++/**
++ * Loads the stored app state with an explicit status. Corrupt or unparseable
++ * payloads are quarantined under a separate key — the app never silently
++ * discards user data, and callers can distinguish a fresh install from a
++ * recovered-from-corruption state.
++ */
++export async function loadStoredAppStateDetailed(): Promise<StorageLoadResult> {
++  let raw: string | null;
++  try {
++    raw = await AsyncStorage.getItem(APP_STATE_KEY);
++  } catch (error) {
++    console.warn('[Storage] Failed to read app state key:', error);
++    return { status: 'fresh-install', state: DEFAULT_APP_STATE };
++  }
+ 
+-export function getTodayDateString(): string {
+-  const now = new Date();
+-  const year = now.getFullYear();
+-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+-  const day = now.getDate().toString().padStart(2, '0');
+-  return `${year}-${month}-${day}`;
+-}
++  if (raw === null) {
++    return { status: 'fresh-install', state: DEFAULT_APP_STATE };
++  }
+ 
+-export async function getChallenges(): Promise<DailyChallenge[]> {
+-  const challenges = await storage.get<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, DEFAULT_CHALLENGES);
+-  const todayStr = getTodayDateString();
++  let parsed: unknown;
++  try {
++    parsed = JSON.parse(raw);
++  } catch {
++    const quarantinedKey = await quarantineCorruptPayload(raw);
++    return {
++      status: 'corrupted-quarantined',
++      state: DEFAULT_APP_STATE,
++      quarantinedKey,
++    };
++  }
+ 
+-  // Reset checkboxes if last completed date is not today
+-  let hasChanges = false;
+-  const synchronized = challenges.map((challenge) => {
+-    if (challenge.completed && challenge.lastCompletedDate !== todayStr) {
+-      hasChanges = true;
+-      return { ...challenge, completed: false };
++  // Current format: checksum-verified envelope.
++  if (isStorageEnvelope<AppStateData>(parsed)) {
++    const dataJson = JSON.stringify(parsed.data);
++    if (parsed.checksum !== fnv1a32(dataJson) || !isAppStateData(parsed.data)) {
++      const quarantinedKey = await quarantineCorruptPayload(raw);
++      return {
++        status: 'corrupted-quarantined',
++        state: DEFAULT_APP_STATE,
++        quarantinedKey,
++      };
+     }
+-    return challenge;
+-  });
+-
+-  if (hasChanges) {
+-    await storage.set<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, synchronized);
++    if (parsed.schemaVersion < CURRENT_SCHEMA_VERSION) {
++      const migrated = migrateAppState(parsed.data, parsed.schemaVersion);
++      await writeEnvelope(migrated);
++      return { status: 'migrated-from-legacy', state: migrated };
++    }
++    // Envelope from a newer app version: use as-is, never clobber it.
++    return { status: 'ok', state: parsed.data };
+   }
+ 
+-  return synchronized;
+-}
+-
+-export async function saveChallenges(challenges: DailyChallenge[]): Promise<boolean> {
+-  return storage.set<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, challenges);
+-}
+-
+-// 5. Theme Accent
+-export async function getThemeAccent(): Promise<string | null> {
+-  const raw = await storage.getString(STORAGE_KEYS.THEME_ACCENT);
+-  return raw || null;
+-}
++  // Legacy format: raw pre-envelope payloads written by v1 installs.
++  if (isAppStateData(parsed)) {
++    await writeEnvelope(parsed);
++    return { status: 'migrated-from-legacy', state: parsed };
++  }
+ 
+-export async function setThemeAccent(hex: string): Promise<boolean> {
+-  return storage.setString(STORAGE_KEYS.THEME_ACCENT, hex);
++  // Unrecognized shape: quarantine, do not trust.
++  const quarantinedKey = await quarantineCorruptPayload(raw);
++  return {
++    status: 'corrupted-quarantined',
++    state: DEFAULT_APP_STATE,
++    quarantinedKey,
++  };
+ }
+-import { AppStateData, UserProfile, RelapseRecord, CircadianDayRecord, CircadianHistory } from '../types/app';
+-
+-export const DEFAULT_APP_STATE: AppStateData = {
+-  profile: {
+-    habitTitle: 'Digital Freedom',
+-    habitCategory: 'digital_distraction',
+-    startDate: Date.now(),
+-    bestRecordMs: 0,
+-    attemptCount: 1,
+-    weeklyCostEstimated: 0,
+-    dailyMinutesWasted: 0,
+-    auraScore: 0,
+-    tierStatus: 'Initiate',
+-    isOnboarded: false,
+-    biometricsEnabled: false,
+-  },
+-  relapseHistory: [],
+-  interventionState: {
+-    lastCompletedAt: null,
+-    cooldownUntil: null,
+-  },
+-  circadianHistory: {},
+-  activeChallengeId: null,
+-};
+ 
++/**
++ * Backwards-compatible loader. Corruption is quarantined and logged with the
++ * quarantine key — never a silent reset.
++ */
+ export async function loadStoredAppState(): Promise<AppStateData> {
+-  return storage.get<AppStateData>('@sovereign/app_state', DEFAULT_APP_STATE);
++  const result = await loadStoredAppStateDetailed();
++  if (result.status === 'corrupted-quarantined') {
++    console.warn(
++      `[Storage] Corrupt app-state payload quarantined at "${result.quarantinedKey}". ` +
++        'Returning defaults; the original payload was preserved for recovery.'
++    );
++  }
++  return result.state;
+ }
+ 
++// ---------------------------------------------------------------------------
++// Saving and granular updaters
++// ---------------------------------------------------------------------------
++
++/**
++ * Persists the full app state inside a checksum-verified envelope. Refuses to
++ * write payloads that fail validation rather than persisting garbage.
++ */
+ export async function saveStoredAppState(state: AppStateData): Promise<boolean> {
+-  return storage.set<AppStateData>('@sovereign/app_state', state);
++  if (!isAppStateData(state)) {
++    console.warn('[Storage] Refusing to persist invalid app state.');
++    return false;
++  }
++  return writeEnvelope(state);
+ }
+ 
+-export async function updateUserProfile(updater: (prev: UserProfile) => UserProfile): Promise<UserProfile> {
++export async function updateUserProfile(
++  updater: (prev: UserProfile) => UserProfile
++): Promise<UserProfile> {
+   const state = await loadStoredAppState();
+   const nextProfile = updater(state.profile);
+   await saveStoredAppState({ ...state, profile: nextProfile });
+   return nextProfile;
+ }
+ 
+-export async function appendRelapseRecord(record: RelapseRecord): Promise<RelapseRecord[]> {
++export async function appendRelapseRecord(
++  record: RelapseRecord
++): Promise<RelapseRecord[]> {
+   const state = await loadStoredAppState();
+   const nextHistory = [record, ...state.relapseHistory];
+   await saveStoredAppState({ ...state, relapseHistory: nextHistory });
+   return nextHistory;
+ }
+ 
+-export async function updateCircadianDay(dateKey: string, updater: (prev: CircadianDayRecord) => CircadianDayRecord): Promise<CircadianHistory> {
++export async function updateCircadianDay(
++  dateKey: string,
++  updater: (prev: CircadianDayRecord) => CircadianDayRecord
++): Promise<CircadianHistory> {
+   const state = await loadStoredAppState();
+   const existing = state.circadianHistory[dateKey] || {
+     dateString: dateKey,
+@@ -294,14 +293,83 @@ export async function updateCircadianDay(dateKey: string, updater: (prev: Circad
+   return nextHistory;
+ }
+ 
++// ---------------------------------------------------------------------------
++// Write-queue seam
++// ---------------------------------------------------------------------------
++
+ export async function forceFlushPendingWrites(): Promise<void> {
++  // AsyncStorage applies every write immediately; there is no in-memory write
++  // buffer to flush. This is a seam so a future write queue can hook in here
++  // without changing callers (e.g. the AppState background handler).
+   return Promise.resolve();
+ }
+ 
+-export async function shareTelemetryExport(): Promise<{ success: boolean; error?: string }> {
+-  return { success: true };
++// ---------------------------------------------------------------------------
++// Air-gapped telemetry backup (real implementation)
++// ---------------------------------------------------------------------------
++
++/**
++ * Serializes the current app state into a checksummed TelemetryExportPayload.
++ * The caller decides how to share the resulting JSON (share sheet, file, …).
++ */
++export async function exportTelemetryBackup(): Promise<
++  SerializationResult<string>
++> {
++  const state = await loadStoredAppState();
++  try {
++    const stateJson = JSON.stringify(state);
++    const payload: TelemetryExportPayload = {
++      exportVersion: 1,
++      exportedAt: Date.now(),
++      schemaVersion: CURRENT_SCHEMA_VERSION,
++      checksum: fnv1a32(stateJson),
++      deviceMetadata: { airGapped: true, platform: Platform.OS },
++      state,
++    };
++    return { success: true, data: JSON.stringify(payload) };
++  } catch (error) {
++    return {
++      success: false,
++      error: `Failed to serialize telemetry backup: ${String(error)}`,
++    };
++  }
+ }
+ 
+-export async function importTelemetryBackup(json: string): Promise<{ success: boolean; data?: AppStateData; error?: string }> {
+-  return { success: false, error: 'Not implemented' };
++/**
++ * Restores app state from a telemetry backup produced by exportTelemetryBackup.
++ * The payload shape, checksum, and state are all validated before anything is
++ * written; invalid backups are rejected with a reason, never half-applied.
++ */
++export async function importTelemetryBackup(
++  json: string
++): Promise<{ success: boolean; data?: AppStateData; error?: string }> {
++  let parsed: unknown;
++  try {
++    parsed = JSON.parse(json);
++  } catch {
++    return { success: false, error: 'Backup is not valid JSON.' };
++  }
++  if (!isTelemetryExportPayload(parsed)) {
++    return {
++      success: false,
++      error: 'Backup is not a recognized Sovereign telemetry payload.',
++    };
++  }
++  if (parsed.checksum !== fnv1a32(JSON.stringify(parsed.state))) {
++    return {
++      success: false,
++      error: 'Backup checksum mismatch — the file may be damaged.',
++    };
++  }
++  if (!isAppStateData(parsed.state)) {
++    return { success: false, error: 'Backup contains invalid app state.' };
++  }
++  const saved = await saveStoredAppState(parsed.state);
++  if (!saved) {
++    return {
++      success: false,
++      error: 'Backup is valid but could not be saved on this device.',
++    };
++  }
++  return { success: true, data: parsed.state };
+ }

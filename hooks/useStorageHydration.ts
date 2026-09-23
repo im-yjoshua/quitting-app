@@ -14,7 +14,7 @@ import {
   appendRelapseRecord,
   updateCircadianDay,
   forceFlushPendingWrites,
-  shareTelemetryExport,
+  exportTelemetryBackup,
   importTelemetryBackup,
   DEFAULT_APP_STATE,
 } from '../services/storage';
@@ -135,7 +135,11 @@ export function useStorageHydration(): StorageHydrationResult {
 
   // Air-gapped export via native Share dialog
   const exportTelemetry = useCallback(async () => {
-    return await shareTelemetryExport();
+    const result = await exportTelemetryBackup();
+    if (result.success) {
+      return { success: true };
+    }
+    return { success: false, error: result.error };
   }, []);
 
   // Air-gapped backup import

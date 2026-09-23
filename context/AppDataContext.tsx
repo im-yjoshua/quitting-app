@@ -34,7 +34,7 @@ import {
   loadStoredAppState,
   saveStoredAppState,
   forceFlushPendingWrites,
-  shareTelemetryExport,
+  exportTelemetryBackup,
   importTelemetryBackup,
   DEFAULT_APP_STATE,
 } from '../services/storage';
@@ -428,7 +428,11 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [syncCurrentTime]);
 
   const exportTelemetry = useCallback(async () => {
-    return await shareTelemetryExport();
+    const result = await exportTelemetryBackup();
+    if (result.success) {
+      return { success: true };
+    }
+    return { success: false, error: result.error };
   }, []);
 
   const importTelemetry = useCallback(

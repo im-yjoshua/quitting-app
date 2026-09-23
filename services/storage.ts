@@ -1,237 +1,35 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import {
+  AppStateData,
+  UserProfile,
+  RelapseRecord,
+  CircadianDayRecord,
+  CircadianHistory,
+  CURRENT_SCHEMA_VERSION,
+  SerializationResult,
+  StorageEnvelope,
+  TelemetryExportPayload,
+  isCircadianHistory,
+  isRelapseRecord,
+  isStorageEnvelope,
+  isTelemetryExportPayload,
+  isUserProfile,
+} from '../types/app';
 
-/**
- * Sovereign Centralized Storage Namespace Keys
- */
-export const STORAGE_KEYS = {
-  START_TIMESTAMP: '@sovereign/start_timestamp',
-  JOURNAL_ENTRIES: '@sovereign/journal_entries',
-  TODOS: '@sovereign/todos',
-  CHALLENGES: '@sovereign/challenges',
-  THEME_ACCENT: '@sovereign/theme_accent',
-} as const;
+// ---------------------------------------------------------------------------
+// Keys
+// ---------------------------------------------------------------------------
 
-export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS];
+/** Primary key for the envelope-backed app state (unchanged from v1 installs). */
+const APP_STATE_KEY = '@sovereign/app_state';
 
-/**
- * Core Data Models
- */
-export interface JournalEntry {
-  id: string;
-  timestamp: string; // ISO string or human-formatted time
-  title: string;
-  body: string;
-}
+/** Prefix for quarantined corrupt payloads: `${CORRUPT_QUARANTINE_PREFIX}<epochMs>`. */
+const CORRUPT_QUARANTINE_PREFIX = '@sovereign/app_state.corrupt.';
 
-export interface TodoItem {
-  id: string;
-  text: string;
-  completed: boolean;
-  createdAt: number;
-}
-
-export interface DailyChallenge {
-  id: string;
-  title: string;
-  completed: boolean;
-  lastCompletedDate?: string; // Format: YYYY-MM-DD
-}
-
-/**
- * Generic Safe Storage Wrapper
- */
-export const storage = {
-  /**
-   * Safely retrieve and parse item from AsyncStorage
-   */
-  async get<T>(key: string, defaultValue: T): Promise<T> {
-    try {
-      const raw = await AsyncStorage.getItem(key);
-      if (raw === null || raw === undefined) {
-        return defaultValue;
-      }
-      return JSON.parse(raw) as T;
-    } catch (error) {
-      console.warn(`[Storage] Failed to read key "${key}":`, error);
-      return defaultValue;
-    }
-  },
-
-  /**
-   * Safely serialize and persist item to AsyncStorage
-   */
-  async set<T>(key: string, value: T): Promise<boolean> {
-    try {
-      const serialized = JSON.stringify(value);
-      await AsyncStorage.setItem(key, serialized);
-      return true;
-    } catch (error) {
-      console.warn(`[Storage] Failed to write key "${key}":`, error);
-      return false;
-    }
-  },
-
-  /**
-   * Safely retrieve raw string value
-   */
-  async getString(key: string, defaultValue: string = ''): Promise<string> {
-    try {
-      const val = await AsyncStorage.getItem(key);
-      return val ?? defaultValue;
-    } catch (error) {
-      console.warn(`[Storage] Failed to read string key "${key}":`, error);
-      return defaultValue;
-    }
-  },
-
-  /**
-   * Safely persist raw string value
-   */
-  async setString(key: string, value: string): Promise<boolean> {
-    try {
-      await AsyncStorage.setItem(key, value);
-      return true;
-    } catch (error) {
-      console.warn(`[Storage] Failed to write string key "${key}":`, error);
-      return false;
-    }
-  },
-
-  /**
-   * Remove single key
-   */
-  async remove(key: string): Promise<boolean> {
-    try {
-      await AsyncStorage.removeItem(key);
-      return true;
-    } catch (error) {
-      console.warn(`[Storage] Failed to remove key "${key}":`, error);
-      return false;
-    }
-  },
-
-  /**
-   * Clear all keys in namespace
-   */
-  async clearAllSovereignData(): Promise<boolean> {
-    try {
-      await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
-      return true;
-    } catch (error) {
-      console.warn('[Storage] Failed to clear sovereign data:', error);
-      return false;
-    }
-  },
-};
-
-/**
- * Typed Convenience Getters & Setters
- */
-
-// 1. Recovery Start Timestamp
-export async function getStartTimestamp(): Promise<string> {
-  const stored = await storage.getString(STORAGE_KEYS.START_TIMESTAMP);
-  if (!stored) {
-    const defaultStart = new Date().toISOString();
-    await storage.setString(STORAGE_KEYS.START_TIMESTAMP, defaultStart);
-    return defaultStart;
-  }
-  return stored;
-}
-
-export async function setStartTimestamp(isoString: string): Promise<boolean> {
-  return storage.setString(STORAGE_KEYS.START_TIMESTAMP, isoString);
-}
-
-// 2. Journal Reflections
-export const DEFAULT_JOURNAL_ENTRIES: JournalEntry[] = [
-  {
-    id: '1',
-    timestamp: new Date().toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-    title: 'Baseline Grounding',
-    body: 'Initiated the recovery protocol. Mind is vigilant, respiratory baseline calm.',
-  },
-];
-
-export async function getJournalEntries(): Promise<JournalEntry[]> {
-  return storage.get<JournalEntry[]>(STORAGE_KEYS.JOURNAL_ENTRIES, DEFAULT_JOURNAL_ENTRIES);
-}
-
-export async function saveJournalEntries(entries: JournalEntry[]): Promise<boolean> {
-  return storage.set<JournalEntry[]>(STORAGE_KEYS.JOURNAL_ENTRIES, entries);
-}
-
-// 3. To-Do Items
-export const DEFAULT_TODOS: TodoItem[] = [
-  { id: '1', text: '10-minute morning box breathing', completed: false, createdAt: Date.now() - 3600000 },
-  { id: '2', text: 'Cold water facial plunge during urge', completed: false, createdAt: Date.now() - 1800000 },
-  { id: '3', text: 'Zero screens 45m before sleep', completed: false, createdAt: Date.now() },
-];
-
-export async function getTodos(): Promise<TodoItem[]> {
-  return storage.get<TodoItem[]>(STORAGE_KEYS.TODOS, DEFAULT_TODOS);
-}
-
-export async function saveTodos(todos: TodoItem[]): Promise<boolean> {
-  return storage.set<TodoItem[]>(STORAGE_KEYS.TODOS, todos);
-}
-
-// 4. Daily Challenges
-export const DEFAULT_CHALLENGES: DailyChallenge[] = [
-  { id: '1', title: '5-minute deep box breathing', completed: false },
-  { id: '2', title: 'Hydrate with 2L clean water', completed: false },
-  { id: '3', title: '20-minute physical walk without phone', completed: false },
-  { id: '4', title: 'Zero adult / triggering website visits', completed: false },
-];
-
-export function getTodayDateString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-export async function getChallenges(): Promise<DailyChallenge[]> {
-  const challenges = await storage.get<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, DEFAULT_CHALLENGES);
-  const todayStr = getTodayDateString();
-
-  // Reset checkboxes if last completed date is not today
-  let hasChanges = false;
-  const synchronized = challenges.map((challenge) => {
-    if (challenge.completed && challenge.lastCompletedDate !== todayStr) {
-      hasChanges = true;
-      return { ...challenge, completed: false };
-    }
-    return challenge;
-  });
-
-  if (hasChanges) {
-    await storage.set<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, synchronized);
-  }
-
-  return synchronized;
-}
-
-export async function saveChallenges(challenges: DailyChallenge[]): Promise<boolean> {
-  return storage.set<DailyChallenge[]>(STORAGE_KEYS.CHALLENGES, challenges);
-}
-
-// 5. Theme Accent
-export async function getThemeAccent(): Promise<string | null> {
-  const raw = await storage.getString(STORAGE_KEYS.THEME_ACCENT);
-  return raw || null;
-}
-
-export async function setThemeAccent(hex: string): Promise<boolean> {
-  return storage.setString(STORAGE_KEYS.THEME_ACCENT, hex);
-}
-import { AppStateData, UserProfile, RelapseRecord, CircadianDayRecord, CircadianHistory } from '../types/app';
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
 
 export const DEFAULT_APP_STATE: AppStateData = {
   profile: {
@@ -256,29 +54,230 @@ export const DEFAULT_APP_STATE: AppStateData = {
   activeChallengeId: null,
 };
 
+// ---------------------------------------------------------------------------
+// Integrity primitives
+// ---------------------------------------------------------------------------
+
+/**
+ * FNV-1a 32-bit hash, hex-encoded. Used as a corruption-detection checksum for
+ * stored payloads. This is an integrity check, not cryptography — it catches
+ * truncated writes, manual tampering, and restore glitches, nothing more.
+ */
+function fnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * Runtime guard for a full AppStateData snapshot. Composes the granular guards
+ * from types/app.ts so stored payloads are validated before the app trusts them.
+ */
+function isAppStateData(raw: unknown): raw is AppStateData {
+  if (!raw || typeof raw !== 'object') return false;
+  const s = raw as Partial<AppStateData>;
+  const intervention = s.interventionState as
+    | { lastCompletedAt?: unknown; cooldownUntil?: unknown }
+    | undefined;
+  if (!intervention) return false;
+  const { lastCompletedAt, cooldownUntil } = intervention;
+  return (
+    isUserProfile(s.profile) &&
+    Array.isArray(s.relapseHistory) &&
+    s.relapseHistory.every(isRelapseRecord) &&
+    (lastCompletedAt === null ||
+      (typeof lastCompletedAt === 'number' && !isNaN(lastCompletedAt))) &&
+    (cooldownUntil === null ||
+      (typeof cooldownUntil === 'number' && !isNaN(cooldownUntil))) &&
+    isCircadianHistory(s.circadianHistory) &&
+    (s.activeChallengeId === null || typeof s.activeChallengeId === 'string')
+  );
+}
+
+/**
+ * Versioned migration hook. Raw pre-envelope payloads and older envelopes
+ * converge here before being re-saved in the current format.
+ */
+function migrateAppState(state: AppStateData, fromVersion: number): AppStateData {
+  // v1 -> v2: the envelope itself is the v2 format; the AppStateData shape did
+  // not change, so there is nothing to rewrite. Add versioned branches here
+  // when the shape changes in the future.
+  void fromVersion;
+  return state;
+}
+
+async function writeEnvelope(state: AppStateData): Promise<boolean> {
+  try {
+    const dataJson = JSON.stringify(state);
+    const envelope: StorageEnvelope<AppStateData> = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      savedAt: Date.now(),
+      checksum: fnv1a32(dataJson),
+      data: state,
+    };
+    await AsyncStorage.setItem(APP_STATE_KEY, JSON.stringify(envelope));
+    return true;
+  } catch (error) {
+    console.warn('[Storage] Failed to write app state envelope:', error);
+    return false;
+  }
+}
+
+/**
+ * Moves an unreadable payload aside under a timestamped quarantine key and
+ * removes the corrupt primary key, so a bad write can never poison every
+ * subsequent launch. The original bytes are preserved for manual recovery.
+ */
+async function quarantineCorruptPayload(raw: string): Promise<string> {
+  const quarantineKey = `${CORRUPT_QUARANTINE_PREFIX}${Date.now()}`;
+  try {
+    await AsyncStorage.setItem(quarantineKey, raw);
+    await AsyncStorage.removeItem(APP_STATE_KEY);
+  } catch (error) {
+    console.warn('[Storage] Failed to quarantine corrupt payload:', error);
+  }
+  return quarantineKey;
+}
+
+// ---------------------------------------------------------------------------
+// Loading
+// ---------------------------------------------------------------------------
+
+export type StorageLoadStatus =
+  | 'ok'
+  | 'fresh-install'
+  | 'migrated-from-legacy'
+  | 'corrupted-quarantined';
+
+export interface StorageLoadResult {
+  readonly status: StorageLoadStatus;
+  readonly state: AppStateData;
+  /** Present only when status is 'corrupted-quarantined'. */
+  readonly quarantinedKey?: string;
+}
+
+/**
+ * Loads the stored app state with an explicit status. Corrupt or unparseable
+ * payloads are quarantined under a separate key — the app never silently
+ * discards user data, and callers can distinguish a fresh install from a
+ * recovered-from-corruption state.
+ */
+export async function loadStoredAppStateDetailed(): Promise<StorageLoadResult> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(APP_STATE_KEY);
+  } catch (error) {
+    console.warn('[Storage] Failed to read app state key:', error);
+    return { status: 'fresh-install', state: DEFAULT_APP_STATE };
+  }
+
+  if (raw === null) {
+    return { status: 'fresh-install', state: DEFAULT_APP_STATE };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const quarantinedKey = await quarantineCorruptPayload(raw);
+    return {
+      status: 'corrupted-quarantined',
+      state: DEFAULT_APP_STATE,
+      quarantinedKey,
+    };
+  }
+
+  // Current format: checksum-verified envelope.
+  if (isStorageEnvelope<AppStateData>(parsed)) {
+    const dataJson = JSON.stringify(parsed.data);
+    if (parsed.checksum !== fnv1a32(dataJson) || !isAppStateData(parsed.data)) {
+      const quarantinedKey = await quarantineCorruptPayload(raw);
+      return {
+        status: 'corrupted-quarantined',
+        state: DEFAULT_APP_STATE,
+        quarantinedKey,
+      };
+    }
+    if (parsed.schemaVersion < CURRENT_SCHEMA_VERSION) {
+      const migrated = migrateAppState(parsed.data, parsed.schemaVersion);
+      await writeEnvelope(migrated);
+      return { status: 'migrated-from-legacy', state: migrated };
+    }
+    // Envelope from a newer app version: use as-is, never clobber it.
+    return { status: 'ok', state: parsed.data };
+  }
+
+  // Legacy format: raw pre-envelope payloads written by v1 installs.
+  if (isAppStateData(parsed)) {
+    await writeEnvelope(parsed);
+    return { status: 'migrated-from-legacy', state: parsed };
+  }
+
+  // Unrecognized shape: quarantine, do not trust.
+  const quarantinedKey = await quarantineCorruptPayload(raw);
+  return {
+    status: 'corrupted-quarantined',
+    state: DEFAULT_APP_STATE,
+    quarantinedKey,
+  };
+}
+
+/**
+ * Backwards-compatible loader. Corruption is quarantined and logged with the
+ * quarantine key — never a silent reset.
+ */
 export async function loadStoredAppState(): Promise<AppStateData> {
-  return storage.get<AppStateData>('@sovereign/app_state', DEFAULT_APP_STATE);
+  const result = await loadStoredAppStateDetailed();
+  if (result.status === 'corrupted-quarantined') {
+    console.warn(
+      `[Storage] Corrupt app-state payload quarantined at "${result.quarantinedKey}". ` +
+        'Returning defaults; the original payload was preserved for recovery.'
+    );
+  }
+  return result.state;
 }
 
+// ---------------------------------------------------------------------------
+// Saving and granular updaters
+// ---------------------------------------------------------------------------
+
+/**
+ * Persists the full app state inside a checksum-verified envelope. Refuses to
+ * write payloads that fail validation rather than persisting garbage.
+ */
 export async function saveStoredAppState(state: AppStateData): Promise<boolean> {
-  return storage.set<AppStateData>('@sovereign/app_state', state);
+  if (!isAppStateData(state)) {
+    console.warn('[Storage] Refusing to persist invalid app state.');
+    return false;
+  }
+  return writeEnvelope(state);
 }
 
-export async function updateUserProfile(updater: (prev: UserProfile) => UserProfile): Promise<UserProfile> {
+export async function updateUserProfile(
+  updater: (prev: UserProfile) => UserProfile
+): Promise<UserProfile> {
   const state = await loadStoredAppState();
   const nextProfile = updater(state.profile);
   await saveStoredAppState({ ...state, profile: nextProfile });
   return nextProfile;
 }
 
-export async function appendRelapseRecord(record: RelapseRecord): Promise<RelapseRecord[]> {
+export async function appendRelapseRecord(
+  record: RelapseRecord
+): Promise<RelapseRecord[]> {
   const state = await loadStoredAppState();
   const nextHistory = [record, ...state.relapseHistory];
   await saveStoredAppState({ ...state, relapseHistory: nextHistory });
   return nextHistory;
 }
 
-export async function updateCircadianDay(dateKey: string, updater: (prev: CircadianDayRecord) => CircadianDayRecord): Promise<CircadianHistory> {
+export async function updateCircadianDay(
+  dateKey: string,
+  updater: (prev: CircadianDayRecord) => CircadianDayRecord
+): Promise<CircadianHistory> {
   const state = await loadStoredAppState();
   const existing = state.circadianHistory[dateKey] || {
     dateString: dateKey,
@@ -294,14 +293,83 @@ export async function updateCircadianDay(dateKey: string, updater: (prev: Circad
   return nextHistory;
 }
 
+// ---------------------------------------------------------------------------
+// Write-queue seam
+// ---------------------------------------------------------------------------
+
 export async function forceFlushPendingWrites(): Promise<void> {
+  // AsyncStorage applies every write immediately; there is no in-memory write
+  // buffer to flush. This is a seam so a future write queue can hook in here
+  // without changing callers (e.g. the AppState background handler).
   return Promise.resolve();
 }
 
-export async function shareTelemetryExport(): Promise<{ success: boolean; error?: string }> {
-  return { success: true };
+// ---------------------------------------------------------------------------
+// Air-gapped telemetry backup (real implementation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Serializes the current app state into a checksummed TelemetryExportPayload.
+ * The caller decides how to share the resulting JSON (share sheet, file, …).
+ */
+export async function exportTelemetryBackup(): Promise<
+  SerializationResult<string>
+> {
+  const state = await loadStoredAppState();
+  try {
+    const stateJson = JSON.stringify(state);
+    const payload: TelemetryExportPayload = {
+      exportVersion: 1,
+      exportedAt: Date.now(),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      checksum: fnv1a32(stateJson),
+      deviceMetadata: { airGapped: true, platform: Platform.OS },
+      state,
+    };
+    return { success: true, data: JSON.stringify(payload) };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to serialize telemetry backup: ${String(error)}`,
+    };
+  }
 }
 
-export async function importTelemetryBackup(json: string): Promise<{ success: boolean; data?: AppStateData; error?: string }> {
-  return { success: false, error: 'Not implemented' };
+/**
+ * Restores app state from a telemetry backup produced by exportTelemetryBackup.
+ * The payload shape, checksum, and state are all validated before anything is
+ * written; invalid backups are rejected with a reason, never half-applied.
+ */
+export async function importTelemetryBackup(
+  json: string
+): Promise<{ success: boolean; data?: AppStateData; error?: string }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { success: false, error: 'Backup is not valid JSON.' };
+  }
+  if (!isTelemetryExportPayload(parsed)) {
+    return {
+      success: false,
+      error: 'Backup is not a recognized Sovereign telemetry payload.',
+    };
+  }
+  if (parsed.checksum !== fnv1a32(JSON.stringify(parsed.state))) {
+    return {
+      success: false,
+      error: 'Backup checksum mismatch — the file may be damaged.',
+    };
+  }
+  if (!isAppStateData(parsed.state)) {
+    return { success: false, error: 'Backup contains invalid app state.' };
+  }
+  const saved = await saveStoredAppState(parsed.state);
+  if (!saved) {
+    return {
+      success: false,
+      error: 'Backup is valid but could not be saved on this device.',
+    };
+  }
+  return { success: true, data: parsed.state };
 }

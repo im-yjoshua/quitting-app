@@ -9,7 +9,7 @@ import React, {
 } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
-import { getStartTimestamp, setStartTimestamp } from '@/services/storage';
+import { getStartTimestamp, setStartTimestamp } from '@/services/legacyStorage';
 import {
   breakDownDuration,
   calculateConcentricDialMetrics,

@@ -21,7 +21,7 @@ import {
   TodoItem,
   getTodos,
   saveTodos,
-} from '@/services/storage';
+} from '@/services/legacyStorage';
 
 export function TodoListCard() {
   const { colors, theme } = useAppTheme();

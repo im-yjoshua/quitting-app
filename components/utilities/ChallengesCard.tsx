@@ -15,7 +15,7 @@ import {
   getChallenges,
   saveChallenges,
   getTodayDateString,
-} from '@/services/storage';
+} from '@/services/legacyStorage';
 
 export function ChallengesCard() {
   const { colors, theme } = useAppTheme();
