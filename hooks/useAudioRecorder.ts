@@ -1,107 +1,100 @@
-import { useState, useRef, useEffect } from 'react';
-import { Audio } from '@/lib/expo-av-mock';
+import { useEffect, useRef } from 'react';
+import {
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder as useExpoAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { requestAudioPermissionsSecure } from '@/services/audioJournal';
 
+export interface StopRecordingResult {
+  /** Temp URI of the finished recording (callers persist it via the journal services). */
+  uri: string;
+  durationMillis: number;
+}
+
+/**
+ * Voice recording built on expo-audio. Recording state is polled from the
+ * native recorder; durations come from the OS, not a simulated timer.
+ */
 export function useAudioRecorder() {
-  const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState<any>(null);
-  const [durationMillis, setDurationMillis] = useState(0);
-  const [meteringLevels, setMeteringLevels] = useState<number[]>([]);
-  
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recorder = useExpoAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 250);
+  const durationRef = useRef(0);
 
   useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (recording) {
-        recording.stopAndUnloadAsync().catch(() => {});
-      }
-    };
-  }, [recording]);
+    if (recorderState.isRecording) {
+      durationRef.current = recorderState.durationMillis;
+    }
+  }, [recorderState]);
 
-  const startRecording = async () => {
+  const isRecording = recorderState.isRecording;
+  const durationMillis = recorderState.durationMillis;
+
+  const startRecording = async (): Promise<boolean> => {
     try {
       const hasPermission = await requestAudioPermissionsSecure();
-      if (!hasPermission) return;
+      if (!hasPermission) return false;
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        interruptionMode: 'doNotMix',
       });
 
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        (status: any) => {
-          if (status.isRecording) {
-            setDurationMillis(status.durationMillis);
-            if (status.metering !== undefined) {
-              setMeteringLevels((prev) => {
-                const updated = [...prev, status.metering!];
-                if (updated.length > 20) return updated.slice(-20);
-                return updated;
-              });
-            }
-          }
-        },
-        100
-      );
-
-      setRecording(newRecording);
-      setIsRecording(true);
-      setDurationMillis(0);
-      setMeteringLevels([]);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      durationRef.current = 0;
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-      timerRef.current = setInterval(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }, 1000);
-
+      return true;
     } catch (err) {
-      console.warn('Failed to start recording', err);
+      console.warn('[useAudioRecorder] Failed to start recording:', err);
+      return false;
     }
   };
 
-  const stopRecording = async (): Promise<{ uri: string; durationMillis: number } | null> => {
-    if (!recording) return null;
-
+  const stopRecording = async (): Promise<StopRecordingResult | null> => {
     try {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setIsRecording(false);
-      
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      const status = await recording.getStatusAsync();
-      
-      setRecording(null);
+      await recorder.stop();
+      const uri = recorder.uri;
+      const finishedDuration = durationRef.current;
+      durationRef.current = 0;
 
-      if (uri && status.durationMillis > 0) {
-        return { uri, durationMillis: status.durationMillis };
+      if (uri && finishedDuration > 0) {
+        return { uri, durationMillis: Math.round(finishedDuration) };
+      }
+      // Zero-length artifact: remove it so it can't linger in the cache dir.
+      if (uri) {
+        await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
       }
       return null;
     } catch (err) {
-      console.warn('Failed to stop recording', err);
+      console.warn('[useAudioRecorder] Failed to stop recording:', err);
       return null;
     }
   };
 
-  const cancelRecording = async () => {
-    if (!recording) return;
+  const cancelRecording = async (): Promise<void> => {
     try {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setIsRecording(false);
-      await recording.stopAndUnloadAsync();
-      setRecording(null);
+      if (recorder.isRecording) {
+        await recorder.stop();
+      }
+      const uri = recorder.uri;
+      if (uri) {
+        await FileSystem.deleteAsync(uri, { idempotent: true });
+      }
+      durationRef.current = 0;
     } catch (err) {
-      console.warn('Failed to cancel recording', err);
+      console.warn('[useAudioRecorder] Failed to cancel recording:', err);
     }
   };
 
   return {
     isRecording,
     durationMillis,
-    meteringLevels,
     startRecording,
     stopRecording,
     cancelRecording,

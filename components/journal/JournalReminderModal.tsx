@@ -63,7 +63,7 @@ export function JournalReminderModal({ visible, onClose }: JournalReminderModalP
         await Notifications.scheduleNotificationAsync({
           content: {
             title: 'Evening Reflection',
-            body: 'Take a moment to record your daily forensic journal.',
+            body: 'Take a moment to record your daily voice journal.',
             sound: true,
             data: { type: 'journal_reminder' },
           },

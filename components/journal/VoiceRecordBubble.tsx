@@ -35,17 +35,21 @@ export function VoiceRecordBubble({ onSave, onProGated, canRecord }: VoiceRecord
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleMicPress = () => {
+  const handleMicPress = async () => {
     if (!canRecord && !isRecording) {
       onProGated();
       return;
     }
-    
+
     if (isRecording) {
       // do nothing on tap if recording, they should use discard/save
     } else {
-      pulseAnim.value = withRepeat(withTiming(1.3, { duration: 800 }), -1, true);
-      startRecording();
+      const started = await startRecording();
+      if (started) {
+        pulseAnim.value = withRepeat(withTiming(1.3, { duration: 800 }), -1, true);
+      }
+      // If permission was denied, the hook already explained via alert;
+      // the UI simply stays idle.
     }
   };
 

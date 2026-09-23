@@ -24,9 +24,6 @@ import {
 /** Primary key for the envelope-backed app state (unchanged from v1 installs). */
 const APP_STATE_KEY = '@sovereign/app_state';
 
-/** Prefix for quarantined corrupt payloads: `${CORRUPT_QUARANTINE_PREFIX}<epochMs>`. */
-const CORRUPT_QUARANTINE_PREFIX = '@sovereign/app_state.corrupt.';
-
 // ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------
@@ -131,13 +128,16 @@ async function writeEnvelope(state: AppStateData): Promise<boolean> {
  * removes the corrupt primary key, so a bad write can never poison every
  * subsequent launch. The original bytes are preserved for manual recovery.
  */
-async function quarantineCorruptPayload(raw: string): Promise<string> {
-  const quarantineKey = `${CORRUPT_QUARANTINE_PREFIX}${Date.now()}`;
+async function quarantineCorruptPayload(
+  key: string,
+  raw: string
+): Promise<string> {
+  const quarantineKey = `${key}.corrupt.${Date.now()}`;
   try {
     await AsyncStorage.setItem(quarantineKey, raw);
-    await AsyncStorage.removeItem(APP_STATE_KEY);
+    await AsyncStorage.removeItem(key);
   } catch (error) {
-    console.warn('[Storage] Failed to quarantine corrupt payload:', error);
+    console.warn(`[Storage] Failed to quarantine corrupt payload at "${key}":`, error);
   }
   return quarantineKey;
 }
@@ -182,7 +182,7 @@ export async function loadStoredAppStateDetailed(): Promise<StorageLoadResult> {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    const quarantinedKey = await quarantineCorruptPayload(raw);
+    const quarantinedKey = await quarantineCorruptPayload(APP_STATE_KEY, raw);
     return {
       status: 'corrupted-quarantined',
       state: DEFAULT_APP_STATE,
@@ -194,7 +194,7 @@ export async function loadStoredAppStateDetailed(): Promise<StorageLoadResult> {
   if (isStorageEnvelope<AppStateData>(parsed)) {
     const dataJson = JSON.stringify(parsed.data);
     if (parsed.checksum !== fnv1a32(dataJson) || !isAppStateData(parsed.data)) {
-      const quarantinedKey = await quarantineCorruptPayload(raw);
+      const quarantinedKey = await quarantineCorruptPayload(APP_STATE_KEY, raw);
       return {
         status: 'corrupted-quarantined',
         state: DEFAULT_APP_STATE,
@@ -217,7 +217,7 @@ export async function loadStoredAppStateDetailed(): Promise<StorageLoadResult> {
   }
 
   // Unrecognized shape: quarantine, do not trust.
-  const quarantinedKey = await quarantineCorruptPayload(raw);
+  const quarantinedKey = await quarantineCorruptPayload(APP_STATE_KEY, raw);
   return {
     status: 'corrupted-quarantined',
     state: DEFAULT_APP_STATE,
@@ -372,4 +372,105 @@ export async function importTelemetryBackup(
     };
   }
   return { success: true, data: parsed.state };
+}
+
+// ---------------------------------------------------------------------------
+// Generic envelope helpers for auxiliary typed lists
+// ---------------------------------------------------------------------------
+
+export type EnvelopedListStatus =
+  | 'ok'
+  | 'fresh-install'
+  | 'migrated-from-legacy'
+  | 'corrupted-quarantined';
+
+export interface EnvelopedListResult<T> {
+  readonly status: EnvelopedListStatus;
+  readonly list: T[];
+  /** Present only when status is 'corrupted-quarantined'. */
+  readonly quarantinedKey?: string;
+}
+
+async function writeEnvelopedValue<T>(key: string, data: T): Promise<boolean> {
+  try {
+    const dataJson = JSON.stringify(data);
+    const envelope: StorageEnvelope<T> = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      savedAt: Date.now(),
+      checksum: fnv1a32(dataJson),
+      data,
+    };
+    await AsyncStorage.setItem(key, JSON.stringify(envelope));
+    return true;
+  } catch (error) {
+    console.warn(`[Storage] Failed to write envelope at "${key}":`, error);
+    return false;
+  }
+}
+
+/**
+ * Loads a typed list stored under its own key inside a checksum-verified
+ * envelope — the same integrity guarantees as the main app state, without
+ * forcing every feature's data into the AppStateData shape.
+ *
+ * Bare-JSON arrays left by pre-envelope code are validated and migrated into
+ * envelopes automatically; corrupt payloads are quarantined, never trusted.
+ */
+export async function loadEnvelopedList<T>(
+  key: string,
+  guard: (raw: unknown) => raw is T[]
+): Promise<EnvelopedListResult<T>> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(key);
+  } catch (error) {
+    console.warn(`[Storage] Failed to read key "${key}":`, error);
+    return { status: 'fresh-install', list: [] };
+  }
+
+  if (raw === null) {
+    return { status: 'fresh-install', list: [] };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const quarantinedKey = await quarantineCorruptPayload(key, raw);
+    return { status: 'corrupted-quarantined', list: [], quarantinedKey };
+  }
+
+  if (isStorageEnvelope<T[]>(parsed)) {
+    const dataJson = JSON.stringify(parsed.data);
+    if (parsed.checksum !== fnv1a32(dataJson) || !guard(parsed.data)) {
+      const quarantinedKey = await quarantineCorruptPayload(key, raw);
+      return { status: 'corrupted-quarantined', list: [], quarantinedKey };
+    }
+    return { status: 'ok', list: parsed.data };
+  }
+
+  // Legacy format: a bare JSON array. Validate, then migrate into an envelope.
+  if (guard(parsed)) {
+    await writeEnvelopedValue(key, parsed);
+    return { status: 'migrated-from-legacy', list: parsed };
+  }
+
+  const quarantinedKey = await quarantineCorruptPayload(key, raw);
+  return { status: 'corrupted-quarantined', list: [], quarantinedKey };
+}
+
+/**
+ * Persists a typed list inside a checksum-verified envelope. Refuses to write
+ * payloads that fail validation rather than persisting garbage.
+ */
+export async function saveEnvelopedList<T>(
+  key: string,
+  guard: (raw: unknown) => raw is T[],
+  list: T[]
+): Promise<boolean> {
+  if (!guard(list)) {
+    console.warn(`[Storage] Refusing to persist invalid list at "${key}".`);
+    return false;
+  }
+  return writeEnvelopedValue(key, list);
 }

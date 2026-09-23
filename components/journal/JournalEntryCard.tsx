@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Audio } from '@/lib/expo-av-mock';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from 'expo-audio';
+import type { EventSubscription } from 'expo-modules-core';
 import { Play, Pause, Trash2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '@/context/ThemeContext';
@@ -17,56 +22,78 @@ interface JournalEntryCardProps {
 export function JournalEntryCard({ entry, onDelete, isPlaying, onPlayToggle }: JournalEntryCardProps) {
   const { colors, theme } = useAppTheme();
   const isDark = theme === 'dark';
-  
-  const [sound, setSound] = useState<any>(null);
+
   const [positionMillis, setPositionMillis] = useState(0);
+  const playerRef = useRef<AudioPlayer | null>(null);
+  const statusSubRef = useRef<EventSubscription | null>(null);
+  // onPlayToggle is re-created by the parent each render; keep a ref so the
+  // playback-status listener never calls a stale closure.
+  const onPlayToggleRef = useRef(onPlayToggle);
+  onPlayToggleRef.current = onPlayToggle;
+
+  const releasePlayer = () => {
+    statusSubRef.current?.remove();
+    statusSubRef.current = null;
+    if (playerRef.current) {
+      playerRef.current.remove();
+      playerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
+      releasePlayer();
     };
-  }, [sound]);
+  }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const managePlayback = async () => {
       if (isPlaying) {
         try {
-          if (!sound) {
-            await Audio.setAudioModeAsync({
-              allowsRecordingIOS: false,
-              playsInSilentModeIOS: true,
+          if (!playerRef.current) {
+            await setAudioModeAsync({
+              allowsRecording: false,
+              playsInSilentMode: true,
             });
-            const { sound: newSound } = await Audio.Sound.createAsync(
-              { uri: entry.uri },
-              { shouldPlay: true },
-              (status: any) => {
-                if (status.isLoaded) {
-                  setPositionMillis(status.positionMillis);
-                  if (status.didJustFinish) {
-                    onPlayToggle(entry.id); // Triggers pause
-                    setPositionMillis(0);
-                  }
+            const player = createAudioPlayer({ uri: entry.uri });
+            if (cancelled) {
+              player.remove();
+              return;
+            }
+            playerRef.current = player;
+            statusSubRef.current = player.addListener(
+              'playbackStatusUpdate',
+              (status) => {
+                setPositionMillis(Math.round(status.currentTime * 1000));
+                if (status.didJustFinish) {
+                  onPlayToggleRef.current(entry.id);
+                  setPositionMillis(0);
                 }
               }
             );
-            setSound(newSound);
-          } else {
-            await sound.playAsync();
           }
+          playerRef.current?.play();
         } catch (err) {
-          console.warn('Failed to play audio', err);
+          console.warn('[JournalEntryCard] Failed to play recording:', err);
+          if (!cancelled) {
+            Alert.alert(
+              'Playback failed',
+              'This recording could not be played. The audio file may be missing.'
+            );
+            onPlayToggleRef.current(entry.id);
+          }
         }
       } else {
-        if (sound) {
-          await sound.pauseAsync();
-        }
+        playerRef.current?.pause();
       }
     };
-    
+
     managePlayback();
-  }, [isPlaying]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isPlaying, entry.id, entry.uri]);
 
   const handleDelete = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
