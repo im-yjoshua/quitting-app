@@ -30,6 +30,11 @@ import {
 import { TriggerAppsModal } from '@/components/commitments/TriggerAppsModal';
 import { ScreenTimeGuideModal } from '@/components/commitments/ScreenTimeGuideModal';
 import { NotificationScheduleCard } from '@/components/settings/NotificationScheduleCard';
+import {
+  createBackupFile,
+  shareBackupFile,
+  pickBackupFileContents,
+} from '@/services/dataBackup';
 
 interface DrawerNavigation {
   openDrawer: () => void;
@@ -52,7 +57,7 @@ export default function SettingsScreen() {
     toggleStealthMode,
     appTitle,
   } = useAppTheme();
-  const { state, isSovereignUser, toggleBiometrics, openPaywall } = useAppData();
+  const { state, isSovereignUser, toggleBiometrics, openPaywall, importTelemetry, storageLoadStatus, reopenStorageRecoveryNotice } = useAppData();
   const navigation = useNavigation<DrawerNavigation>();
 
   
@@ -64,6 +69,7 @@ export default function SettingsScreen() {
   });
   const [triggerAppsVisible, setTriggerAppsVisible] = useState(false);
   const [screenTimeGuideVisible, setScreenTimeGuideVisible] = useState(false);
+  const [isBackupBusy, setIsBackupBusy] = useState(false);
   const isDark = theme === 'dark';
 
   useEffect(() => {
@@ -159,6 +165,86 @@ export default function SettingsScreen() {
     await setAdultContentCommitment(val);
     const updated = await getCommitmentState();
     setCommitmentState(updated);
+  };
+
+  // --- Data & backup ---------------------------------------------------------
+  const integrityStatusText =
+    storageLoadStatus === 'ok'
+      ? 'Verified on last launch'
+      : storageLoadStatus === 'corrupted-quarantined'
+      ? "Couldn't be verified — review needed"
+      : storageLoadStatus === 'migrated-from-legacy'
+      ? 'Upgraded from an older format'
+      : 'No previous data found';
+  const integrityNeedsReview = storageLoadStatus === 'corrupted-quarantined';
+
+  const handleCreateBackup = async () => {
+    if (isBackupBusy) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsBackupBusy(true);
+    try {
+      const created = await createBackupFile();
+      if (!created.success || !created.fileUri) {
+        Alert.alert(
+          'Backup failed',
+          created.error ?? 'Could not create the backup file.'
+        );
+        return;
+      }
+      const shared = await shareBackupFile(created.fileUri);
+      if (shared.shared) {
+        Alert.alert(
+          'Backup created',
+          `Saved as ${created.fileName}. Keep it somewhere safe — it's the only way to restore your data.`
+        );
+      } else {
+        Alert.alert(
+          'Backup saved on this device',
+          `Saved as ${created.fileName}.\n\nThe share sheet didn't open (${
+            shared.error ?? 'unknown reason'
+          }). The file is still in the app's documents.`
+        );
+      }
+    } finally {
+      setIsBackupBusy(false);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (isBackupBusy) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsBackupBusy(true);
+    try {
+      const picked = await pickBackupFileContents();
+      if (picked.canceled) return;
+      if (picked.error || !picked.json) {
+        Alert.alert(
+          'Restore failed',
+          picked.error ?? 'Could not read the selected file.'
+        );
+        return;
+      }
+      const result = await importTelemetry(picked.json);
+      if (result.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          'Backup restored',
+          `Your data was restored from ${
+            picked.fileName ?? 'the backup file'
+          } after passing every integrity check.`
+        );
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(
+          'Backup rejected',
+          `${
+            result.error ?? 'This file could not be restored.'
+          }\n\nYour current data was not touched.`
+        );
+      }
+    } finally {
+      setIsBackupBusy(false);
+    }
   };
 
   return (
@@ -796,6 +882,245 @@ export default function SettingsScreen() {
                 />
               </View>
             </TouchableOpacity>
+          </BlurView>
+        </View>
+
+        {/* Group 5: Data & Backup */}
+        <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
+          DATA & BACKUP
+        </Text>
+        <View
+          style={[
+            styles.capsuleContainer,
+            {
+              borderColor: isDark
+                ? 'rgba(255, 255, 255, 0.08)'
+                : 'rgba(150, 150, 150, 0.2)',
+            },
+          ]}
+        >
+          <BlurView
+            intensity={35}
+            tint={isDark ? 'dark' : 'light'}
+            style={styles.blurCapsule}
+          >
+            {/* Integrity status row */}
+            <TouchableOpacity
+              activeOpacity={integrityNeedsReview ? 0.7 : 1}
+              onPress={
+                integrityNeedsReview ? reopenStorageRecoveryNotice : undefined
+              }
+              style={styles.row}
+              accessibilityLabel={`Data integrity: ${integrityStatusText}`}
+            >
+              <View style={styles.rowLeft}>
+                <View
+                  style={[
+                    styles.iconBox,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.06)'
+                        : 'rgba(0, 0, 0, 0.05)',
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      integrityNeedsReview
+                        ? 'shield-half-outline'
+                        : 'shield-checkmark-outline'
+                    }
+                    size={18}
+                    color={
+                      integrityNeedsReview ? '#FF9F0A' : colors.textPrimary
+                    }
+                  />
+                </View>
+                <View style={styles.rowTextBlock}>
+                  <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
+                    Data integrity
+                  </Text>
+                  <Text
+                    style={[
+                      styles.rowSubtitle,
+                      {
+                        color: integrityNeedsReview
+                          ? '#FF9F0A'
+                          : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {integrityStatusText}
+                  </Text>
+                </View>
+              </View>
+              {integrityNeedsReview && (
+                <View style={styles.chevronBadge}>
+                  <Text
+                    style={[
+                      styles.chevronBadgeText,
+                      { color: colors.accent },
+                    ]}
+                  >
+                    Review
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={colors.textSecondary}
+                  />
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Hairline Separator */}
+            <View
+              style={[
+                styles.separator,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255, 255, 255, 0.06)'
+                    : 'rgba(150, 150, 150, 0.2)',
+                },
+              ]}
+            />
+
+            {/* Create backup row */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleCreateBackup}
+              disabled={isBackupBusy}
+              style={styles.row}
+              accessibilityLabel="Create a backup file"
+            >
+              <View style={styles.rowLeft}>
+                <View
+                  style={[
+                    styles.iconBox,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.06)'
+                        : 'rgba(0, 0, 0, 0.05)',
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={18}
+                    color={colors.textPrimary}
+                  />
+                </View>
+                <View style={styles.rowTextBlock}>
+                  <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
+                    Create backup
+                  </Text>
+                  <Text
+                    style={[styles.rowSubtitle, { color: colors.textSecondary }]}
+                  >
+                    {isBackupBusy
+                      ? 'Working…'
+                      : 'Save a checksummed copy of your data'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.chevronBadge}>
+                <Text
+                  style={[
+                    styles.chevronBadgeText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Save
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {/* Hairline Separator */}
+            <View
+              style={[
+                styles.separator,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255, 255, 255, 0.06)'
+                    : 'rgba(150, 150, 150, 0.2)',
+                },
+              ]}
+            />
+
+            {/* Restore from backup row */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleRestoreBackup}
+              disabled={isBackupBusy}
+              style={styles.row}
+              accessibilityLabel="Restore from a backup file"
+            >
+              <View style={styles.rowLeft}>
+                <View
+                  style={[
+                    styles.iconBox,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.06)'
+                        : 'rgba(0, 0, 0, 0.05)',
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="cloud-download-outline"
+                    size={18}
+                    color={colors.textPrimary}
+                  />
+                </View>
+                <View style={styles.rowTextBlock}>
+                  <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
+                    Restore from backup
+                  </Text>
+                  <Text
+                    style={[styles.rowSubtitle, { color: colors.textSecondary }]}
+                  >
+                    {isBackupBusy
+                      ? 'Working…'
+                      : 'Pick a file — verified before anything changes'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.chevronBadge}>
+                <Text
+                  style={[
+                    styles.chevronBadgeText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Choose
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {/* Explanatory Footer */}
+            <View style={styles.iconFootnote}>
+              <Ionicons
+                name="information-circle-outline"
+                size={13}
+                color={colors.textSecondary}
+              />
+              <Text
+                style={[styles.iconFootnoteText, { color: colors.textSecondary }]}
+              >
+                Backups are checksummed JSON files. A damaged file is rejected —
+                your current data is never overwritten by a bad import.
+              </Text>
+            </View>
           </BlurView>
         </View>
 

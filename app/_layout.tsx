@@ -170,12 +170,18 @@ function RootNavigationLayout() {
       {/* Single global Sovereign paywall, driven by AppDataContext.openPaywall().
           Every premium entry point in the app funnels through this one modal. */}
       <PaywallModal visible={isPaywallVisible} onClose={closePaywall} />
+
+      {/* Storage integrity recovery: shown when this launch's saved data failed
+          its integrity check and was quarantined. Plain-language notice with
+          explicit restore / start-fresh choices — never a silent reset. */}
+      <StorageRecoveryModal />
     </View>
   );
 }
 
 import { ChallengesProvider } from '@/context/ChallengesContext';
 import { PaywallModal } from '@/components/monetization/PaywallModal';
+import { StorageRecoveryModal } from '@/components/storage/StorageRecoveryModal';
 
 export default function RootLayout() {
   return (

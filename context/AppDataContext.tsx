@@ -38,11 +38,13 @@ import * as LocalAuthentication from 'expo-local-authentication';
 
 import {
   loadStoredAppState,
+  loadStoredAppStateDetailed,
   saveStoredAppState,
   forceFlushPendingWrites,
   exportTelemetryBackup,
   importTelemetryBackup,
   DEFAULT_APP_STATE,
+  StorageLoadStatus,
 } from '../services/storage';
 import {
   calculateCleanDurationMs,
@@ -80,6 +82,14 @@ interface AppDataContextValue {
   syncCurrentTime: () => void;
   exportTelemetry: () => Promise<{ success: boolean; error?: string }>;
   importTelemetry: (jsonBackup: string) => Promise<{ success: boolean; error?: string }>;
+  // Storage integrity & recovery — surfaced so the user is told when their
+  // saved data failed its integrity check instead of being silently reset.
+  storageLoadStatus: StorageLoadStatus;
+  quarantinedStorageKey: string | null;
+  isStorageRecoveryVisible: boolean;
+  dismissStorageRecoveryNotice: () => void;
+  reopenStorageRecoveryNotice: () => void;
+  eraseAllDataAndStartFresh: () => Promise<void>;
   // In-App Purchases & Sovereign Entitlements
   isSovereignUser: boolean;
   purchasedPlan: PurchasePlan | null;
@@ -113,6 +123,17 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [purchaseState, setPurchaseState] = useState<PurchaseState>('idle');
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [isPaywallVisible, setIsPaywallVisible] = useState<boolean>(false);
+
+  // Storage integrity: the outcome of this launch's load. When the stored
+  // payload failed its integrity check, the storage layer quarantines the
+  // original bytes and we tell the user instead of silently resetting them.
+  const [storageLoadStatus, setStorageLoadStatus] =
+    useState<StorageLoadStatus>('fresh-install');
+  const [quarantinedStorageKey, setQuarantinedStorageKey] = useState<
+    string | null
+  >(null);
+  const [storageRecoveryDismissed, setStorageRecoveryDismissed] =
+    useState(false);
 
   // Re-synchronize clock immediately to prevent timer drift
   const syncCurrentTime = useCallback(() => {
@@ -149,15 +170,22 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   // entitlement in parallel. The trusted entitlement honors ONLY previously
   // RevenueCat-validated purchases outside __DEV__ — synthesized dev-sandbox
   // entitlements never unlock premium here.
+  //
+  // The detailed loader is used (not the silent one) so a quarantined/corrupt
+  // payload surfaces its status to the recovery UI instead of looking like a
+  // fresh install.
   useEffect(() => {
     async function hydrate() {
       try {
-        const [stored, cachedEntitlement] = await Promise.all([
-          loadStoredAppState(),
+        const [detailed, cachedEntitlement] = await Promise.all([
+          loadStoredAppStateDetailed(),
           getTrustedOfflineEntitlement(),
         ]);
-        stateRef.current = stored;
-        setState(stored);
+        stateRef.current = detailed.state;
+        setState(detailed.state);
+        setStorageLoadStatus(detailed.status);
+        setQuarantinedStorageKey(detailed.quarantinedKey ?? null);
+        setStorageRecoveryDismissed(false);
         setEntitlement(cachedEntitlement);
       } finally {
         setIsLoading(false);
@@ -519,6 +547,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (res.success && res.data) {
         const restored = res.data;
         commitState(() => restored);
+        // The restored state passed full validation, so the store is trusted again.
+        setStorageLoadStatus('ok');
+        setQuarantinedStorageKey(null);
+        setStorageRecoveryDismissed(true);
         syncCurrentTime();
         return { success: true };
       }
@@ -526,6 +558,45 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     },
     [commitState, syncCurrentTime]
   );
+
+  // Recovery notice visibility: shown once per launch while the store is in a
+  // quarantined state, until the user dismisses it or resolves it (restore /
+  // start fresh). Dismissing never deletes the quarantined copy.
+  const isStorageRecoveryVisible =
+    storageLoadStatus === 'corrupted-quarantined' && !storageRecoveryDismissed;
+
+  const dismissStorageRecoveryNotice = useCallback(() => {
+    setStorageRecoveryDismissed(true);
+  }, []);
+
+  const reopenStorageRecoveryNotice = useCallback(() => {
+    setStorageRecoveryDismissed(false);
+  }, []);
+
+  // Deliberate, explicit fresh start after a corruption notice. The quarantined
+  // original is left on disk (never deleted by this action) so nothing is
+  // silently destroyed. The new state starts its clock now — it does not reuse
+  // the module-load timestamp baked into DEFAULT_APP_STATE.
+  const eraseAllDataAndStartFresh = useCallback(async () => {
+    const freshState: AppStateData = {
+      ...DEFAULT_APP_STATE,
+      profile: {
+        ...DEFAULT_APP_STATE.profile,
+        startDate: Date.now(),
+        isOnboarded: false,
+      },
+    };
+    const saved = await saveStoredAppState(freshState);
+    if (!saved) {
+      throw new Error('Could not write a fresh state on this device.');
+    }
+    stateRef.current = freshState;
+    setState(freshState);
+    setStorageLoadStatus('fresh-install');
+    setQuarantinedStorageKey(null);
+    setStorageRecoveryDismissed(true);
+    syncCurrentTime();
+  }, [syncCurrentTime]);
 
   const openPaywall = useCallback(() => {
     setIsPaywallVisible(true);
@@ -609,6 +680,12 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       syncCurrentTime,
       exportTelemetry,
       importTelemetry,
+      storageLoadStatus,
+      quarantinedStorageKey,
+      isStorageRecoveryVisible,
+      dismissStorageRecoveryNotice,
+      reopenStorageRecoveryNotice,
+      eraseAllDataAndStartFresh,
       isSovereignUser: entitlement.isSovereign,
       purchasedPlan: entitlement.activePlan,
       entitlement,
@@ -641,6 +718,12 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       syncCurrentTime,
       exportTelemetry,
       importTelemetry,
+      storageLoadStatus,
+      quarantinedStorageKey,
+      isStorageRecoveryVisible,
+      dismissStorageRecoveryNotice,
+      reopenStorageRecoveryNotice,
+      eraseAllDataAndStartFresh,
       entitlement,
       purchaseState,
       purchaseError,
