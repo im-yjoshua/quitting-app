@@ -7,6 +7,7 @@
     "scheme": "sovereign",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#07090E",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sovereign.app",
@@ -15,11 +16,40 @@
         "NSFaceIDUsageDescription": "Sovereign uses Face ID to protect your personal history and stats.",
         "NSMicrophoneUsageDescription": "Sovereign uses the microphone so you can record voice journal entries.",
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": ["C617.1", "0A2A.1", "3B52.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": ["35F9.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": ["E174.1", "85F4.1"]
+          }
+        ],
+        "NSPrivacyTracking": false,
+        "NSPrivacyTrackingDomains": [],
+        "NSPrivacyCollectedDataTypes": []
       }
     },
     "android": {
       "package": "com.sovereign.app",
       "backgroundColor": "#07090E",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#07090E"
+      },
       "permissions": [
         "android.permission.VIBRATE",
         "android.permission.USE_BIOMETRIC",
@@ -43,7 +73,20 @@
         }
       ],
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#07090E",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#07090E"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
