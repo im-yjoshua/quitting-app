@@ -17,15 +17,6 @@ export type RelapseTrigger =
 export type AuraTier = 'Initiate' | 'Sentinel' | 'Sovereign';
 
 /**
- * Calculates the aura tier corresponding to a reputation score.
- */
-export function calculateAuraTier(auraScore: number): AuraTier {
-  if (auraScore >= 2000) return 'Sovereign';
-  if (auraScore >= 500) return 'Sentinel';
-  return 'Initiate';
-}
-
-/**
  * Immutable record of a committed relapse/slip.
  * Stores forensic triggers, forfeited duration, attempt sequence, and user reflections.
  */

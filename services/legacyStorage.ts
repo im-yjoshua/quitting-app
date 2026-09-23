@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * @deprecated Legacy key/value storage (pre-envelope format).
  *
  * Kept only for the dashboard utility cards that still read these keys
- * (JournalCard, TodoListCard, ChallengesCard) and the unused StreakContext.
+ * (JournalCard, TodoListCard, ChallengesCard).
  * Do NOT add new keys here — new persistence belongs in services/storage.ts,
  * which is envelope-backed with checksums, schema versioning, and migration.
  * This module is scheduled for removal once its remaining readers are migrated.

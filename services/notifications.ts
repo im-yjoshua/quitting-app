@@ -58,18 +58,6 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 }
 
 /**
- * Check whether local notification permissions are currently active.
- */
-export async function checkNotificationPermissions(): Promise<boolean> {
-  try {
-    const { status } = await Notifications.getPermissionsAsync();
-    return status === 'granted';
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Returns true when a notification with the given identifier is already scheduled.
  * Used to make every scheduler idempotent: we schedule what's missing instead of
  * cancelling everything and re-scheduling on every launch.
@@ -138,13 +126,3 @@ export async function scheduleDailyCheckIn(
   }
 }
 
-/**
- * Cancels all scheduled on-device notifications.
- */
-export async function cancelAllNotifications(): Promise<void> {
-  try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
-  } catch (error) {
-    console.warn('Failed to cancel notifications:', error);
-  }
-}

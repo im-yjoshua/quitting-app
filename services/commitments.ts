@@ -242,19 +242,3 @@ export async function startEmergencySession(
   }
 }
 
-/**
- * Ends the emergency session immediately.
- */
-export async function endEmergencySession(): Promise<void> {
-  try {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const state = await getCommitmentState();
-    await saveCommitmentState({
-      ...state,
-      emergencySessionActive: false,
-      emergencySessionEndsAt: null,
-    });
-  } catch (err) {
-    console.warn('[Commitments] Failed to end emergency session:', err);
-  }
-}

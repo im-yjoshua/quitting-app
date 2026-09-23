@@ -19,11 +19,53 @@ import { useAppTheme } from '@/context/ThemeContext';
 import { useAppData } from '@/context/AppDataContext';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import {
-  AudioJournalEntry,
-  getAudioJournals,
-  saveAudioJournal,
-  deleteAudioJournal,
-} from '@/services/audio';
+  VoiceJournalEntry,
+  listVoiceJournals,
+  saveVoiceJournal,
+  deleteVoiceJournal,
+} from '@/services/voiceJournal';
+
+/**
+ * Display shape for the dashboard voice-journal list. The canonical
+ * persistence lives in services/voiceJournal.ts; this card maps entries
+ * to its display shape at the boundary.
+ */
+interface AudioJournalEntry {
+  id: string;
+  timestamp: string;
+  durationMillis: number;
+  uri: string;
+}
+
+function toAudioJournalEntry(entry: VoiceJournalEntry): AudioJournalEntry {
+  return {
+    id: entry.id,
+    timestamp: new Date(entry.createdAt).toLocaleString(),
+    durationMillis: entry.durationMillis,
+    uri: entry.uri,
+  };
+}
+
+async function getAudioJournals(): Promise<AudioJournalEntry[]> {
+  const entries = await listVoiceJournals();
+  return entries.map(toAudioJournalEntry);
+}
+
+async function saveAudioJournal(entry: {
+  uri: string;
+  durationMillis: number;
+}): Promise<AudioJournalEntry[]> {
+  const updated = await saveVoiceJournal({
+    tempUri: entry.uri,
+    durationMillis: entry.durationMillis,
+  });
+  return updated.map(toAudioJournalEntry);
+}
+
+async function deleteAudioJournal(id: string): Promise<AudioJournalEntry[]> {
+  const updated = await deleteVoiceJournal(id);
+  return updated.map(toAudioJournalEntry);
+}
 
 export function AudioJournalCard() {
   const { colors, theme } = useAppTheme();

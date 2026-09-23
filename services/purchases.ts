@@ -84,17 +84,6 @@ export async function saveCachedEntitlement(
 }
 
 /**
- * Purges local cached entitlement (e.g. during clean developer resets).
- */
-export async function clearCachedEntitlement(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(IAP_CONFIG.STORAGE_KEY);
-  } catch (error) {
-    console.error('[Purchases] Failed to purge cached entitlement:', error);
-  }
-}
-
-/**
  * A cached entitlement unlocks premium ONLY if it was previously validated by
  * RevenueCat (source === 'revenuecat'). Dev-sandbox synthesized entitlements
  * (source === 'offline_cache' with isSovereign true) are test artifacts and must
