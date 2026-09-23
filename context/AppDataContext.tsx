@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode,
 } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
@@ -29,6 +30,11 @@ import {
   PurchaseResult,
   RestoreResult,
 } from '../services/purchases';
+import {
+  checkBiometricCapability,
+  authenticateLocalOwner,
+} from '../services/biometrics';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 import {
   loadStoredAppState,
@@ -85,13 +91,17 @@ interface AppDataContextValue {
   isPaywallVisible: boolean;
   openPaywall: () => void;
   closePaywall: () => void;
-  toggleBiometrics: () => Promise<boolean>;
+  toggleBiometrics: () => Promise<{ enabled: boolean; error?: string }>;
 }
 
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
 
 const INTERVENTION_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes strict anti-exploit window
+
+// Monotonic per-session counter so relapse IDs are unique without randomness.
+// Combined with the millisecond timestamp, IDs are unique across sessions too.
+let relapseIdCounter = 0;
 
 function calculateTier(auraScore: number): AuraTier {
   if (auraScore >= 2000) return 'Sovereign';
@@ -150,6 +160,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
           loadStoredAppState(),
           getTrustedOfflineEntitlement(),
         ]);
+        stateRef.current = stored;
         setState(stored);
         setEntitlement(cachedEntitlement);
       } finally {
@@ -167,10 +178,41 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   // Persist state updates on change
-  const persistState = useCallback(async (nextState: AppStateData) => {
-    setState(nextState);
-    await saveStoredAppState(nextState);
-  }, []);
+  // Mutable mirror of the latest committed state. Async actions read this instead of
+  // the render-scoped `state` closure, so two actions fired in quick succession can
+  // never build their updates from the same stale snapshot and overwrite each other.
+  const stateRef = useRef<AppStateData>(DEFAULT_APP_STATE);
+
+  // Synchronously applies an update: computes from the latest committed state, refreshes
+  // the mirror immediately (atomic within JS's single thread), then updates React state.
+  const commitState = useCallback(
+    (updater: (prev: AppStateData) => AppStateData): AppStateData => {
+      const next = updater(stateRef.current);
+      stateRef.current = next;
+      setState(next);
+      return next;
+    },
+    []
+  );
+
+  // Serialized persist queue: disk writes land in commit order, so a slow earlier
+  // write can never clobber a later one.
+  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const persistState = useCallback(
+    async (updater: (prev: AppStateData) => AppStateData): Promise<void> => {
+      const next = commitState(updater);
+      const write = persistQueueRef.current.then(() => saveStoredAppState(next));
+      persistQueueRef.current = write.then(
+        () => undefined,
+        (err: unknown) => {
+          console.error('[AppDataContext] Failed to persist state:', err);
+        }
+      );
+      await write;
+    },
+    [commitState]
+  );
 
   // Pure derived clean duration from epoch timestamps with millisecond precision
   const cleanDurationMs = useMemo(() => {
@@ -220,10 +262,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       const now = Date.now();
-      const nextState: AppStateData = {
-        ...state,
+      await persistState((prev) => ({
+        ...prev,
         profile: {
-          ...state.profile,
+          ...prev.profile,
           habitTitle: title.trim() || 'Digital Freedom',
           habitCategory: category,
           weeklyCostEstimated: Math.max(0, weeklyCost),
@@ -231,28 +273,60 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
           startDate: now,
           bestRecordMs: 0,
           attemptCount: 1,
-          tierStatus: calculateTier(state.profile.auraScore),
+          tierStatus: calculateTier(prev.profile.auraScore),
           isOnboarded: true,
         },
-      };
-
-      await persistState(nextState);
+      }));
     },
-    [state, persistState]
+    [persistState]
   );
 
-  const toggleBiometrics = useCallback(async (): Promise<boolean> => {
-    const nextValue = !state.profile.biometricsEnabled;
-    const nextState: AppStateData = {
-      ...state,
-      profile: {
-        ...state.profile,
-        biometricsEnabled: nextValue,
-      },
-    };
-    await persistState(nextState);
-    return nextValue;
-  }, [state, persistState]);
+  // Biometric lock toggle. Enabling is gated: the device must have biometric hardware
+  // with enrolled biometrics, and the user must pass a live authentication challenge.
+  // Fails gracefully with a clear message instead of flipping a flag that can't work.
+  const toggleBiometrics = useCallback(async (): Promise<{
+    enabled: boolean;
+    error?: string;
+  }> => {
+    const currentlyEnabled = stateRef.current.profile.biometricsEnabled;
+
+    if (currentlyEnabled) {
+      await persistState((prev) => ({
+        ...prev,
+        profile: { ...prev.profile, biometricsEnabled: false },
+      }));
+      return { enabled: false };
+    }
+
+    const capability = await checkBiometricCapability();
+    const biometricsEnrolled =
+      capability.isEnrolled ||
+      capability.enrolledLevel >= LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK;
+
+    if (!capability.hasHardware || !biometricsEnrolled) {
+      return {
+        enabled: false,
+        error:
+          'No biometrics are set up on this device. Enable Face ID, Touch ID, or fingerprint in your device settings first.',
+      };
+    }
+
+    const authenticated = await authenticateLocalOwner(
+      'Confirm it\u2019s you to enable the biometric lock'
+    );
+    if (!authenticated) {
+      return {
+        enabled: false,
+        error: 'Authentication failed or was cancelled. Biometric lock was not enabled.',
+      };
+    }
+
+    await persistState((prev) => ({
+      ...prev,
+      profile: { ...prev.profile, biometricsEnabled: true },
+    }));
+    return { enabled: true };
+  }, [persistState]);
 
   // Relapse report execution (Truthful record, cold reset with forfeited aura & duration)
   const recordRelapse = useCallback(
@@ -260,69 +334,71 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
       const now = Date.now();
-      const forfeiture = calculateRelapseForfeiture(
-        state.profile.startDate,
-        now,
-        state.circadianHistory,
-        state.profile.auraScore
-      );
-
-      const newBestRecord = Math.max(
-        state.profile.bestRecordMs,
-        forfeiture.forfeitedCleanDurationMs
-      );
-
-      const nextAura = Math.max(0, state.profile.auraScore - forfeiture.forfeitedAura);
-
-      const newRecord: RelapseRecord = {
-        id: `relapse_${now}_${Math.random().toString(36).substr(2, 6)}`,
-        timestamp: now,
-        cleanDurationMs: forfeiture.forfeitedCleanDurationMs,
-        trigger,
-        notes: notes?.trim() || undefined,
-        reflection: notes?.trim() || undefined,
-        attemptNumber: state.profile.attemptCount,
-        forfeitedAura: forfeiture.forfeitedAura,
-      };
 
       // Reset today's circadian record for the new attempt so new streak starts fresh
       const today = getLocalDateKey(now);
-      const updatedCircadian = { ...state.circadianHistory };
-      if (updatedCircadian[today]) {
-        updatedCircadian[today] = {
-          ...updatedCircadian[today],
-          amCompleted: false,
-          amCompletedAt: null,
-          pmCompleted: false,
-          pmCompletedAt: null,
-          multiplierActive: false,
+
+      await persistState((prev) => {
+        const forfeiture = calculateRelapseForfeiture(
+          prev.profile.startDate,
+          now,
+          prev.circadianHistory,
+          prev.profile.auraScore
+        );
+
+        const newBestRecord = Math.max(
+          prev.profile.bestRecordMs,
+          forfeiture.forfeitedCleanDurationMs
+        );
+
+        const nextAura = Math.max(0, prev.profile.auraScore - forfeiture.forfeitedAura);
+
+        const newRecord: RelapseRecord = {
+          id: `relapse_${now}_${(relapseIdCounter++).toString(36)}`,
+          timestamp: now,
+          cleanDurationMs: forfeiture.forfeitedCleanDurationMs,
+          trigger,
+          notes: notes?.trim() || undefined,
+          reflection: notes?.trim() || undefined,
+          attemptNumber: prev.profile.attemptCount,
+          forfeitedAura: forfeiture.forfeitedAura,
         };
-      }
 
-      const nextState: AppStateData = {
-        ...state,
-        profile: {
-          ...state.profile,
-          startDate: now,
-          bestRecordMs: newBestRecord,
-          attemptCount: state.profile.attemptCount + 1,
-          auraScore: nextAura,
-          tierStatus: calculateTier(nextAura),
-        },
-        relapseHistory: [newRecord, ...state.relapseHistory],
-        circadianHistory: updatedCircadian,
-      };
+        const updatedCircadian = { ...prev.circadianHistory };
+        if (updatedCircadian[today]) {
+          updatedCircadian[today] = {
+            ...updatedCircadian[today],
+            amCompleted: false,
+            amCompletedAt: null,
+            pmCompleted: false,
+            pmCompletedAt: null,
+            multiplierActive: false,
+          };
+        }
 
-      await persistState(nextState);
+        return {
+          ...prev,
+          profile: {
+            ...prev.profile,
+            startDate: now,
+            bestRecordMs: newBestRecord,
+            attemptCount: prev.profile.attemptCount + 1,
+            auraScore: nextAura,
+            tierStatus: calculateTier(nextAura),
+          },
+          relapseHistory: [newRecord, ...prev.relapseHistory],
+          circadianHistory: updatedCircadian,
+        };
+      });
     },
-    [state, persistState]
+    [persistState]
   );
 
   // Anti-exploit urge intervention claim
   const claimInterventionAura = useCallback(
     async (_drillType: InterventionDrillType, auraAward = 25): Promise<boolean> => {
       const now = Date.now();
-      const currentCooldown = state.interventionState.cooldownUntil ?? 0;
+      const currentCooldown = stateRef.current.interventionState.cooldownUntil ?? 0;
 
       // Lockout check: Reject if within 10-minute cooldown
       if (now < currentCooldown) {
@@ -332,24 +408,24 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      const nextAura = state.profile.auraScore + auraAward;
-      const nextState: AppStateData = {
-        ...state,
-        profile: {
-          ...state.profile,
-          auraScore: nextAura,
-          tierStatus: calculateTier(nextAura),
-        },
-        interventionState: {
-          lastCompletedAt: now,
-          cooldownUntil: now + INTERVENTION_COOLDOWN_MS,
-        },
-      };
-
-      await persistState(nextState);
+      await persistState((prev) => {
+        const nextAura = prev.profile.auraScore + auraAward;
+        return {
+          ...prev,
+          profile: {
+            ...prev.profile,
+            auraScore: nextAura,
+            tierStatus: calculateTier(nextAura),
+          },
+          interventionState: {
+            lastCompletedAt: now,
+            cooldownUntil: now + INTERVENTION_COOLDOWN_MS,
+          },
+        };
+      });
       return true;
     },
-    [state, persistState]
+    [persistState]
   );
 
   // Timed challenge completion claim
@@ -357,21 +433,21 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     async (challengeId: string, auraAward: number): Promise<boolean> => {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      const nextAura = state.profile.auraScore + auraAward;
-      const nextState: AppStateData = {
-        ...state,
-        profile: {
-          ...state.profile,
-          auraScore: nextAura,
-          tierStatus: calculateTier(nextAura),
-        },
-        activeChallengeId: challengeId,
-      };
-
-      await persistState(nextState);
+      await persistState((prev) => {
+        const nextAura = prev.profile.auraScore + auraAward;
+        return {
+          ...prev,
+          profile: {
+            ...prev.profile,
+            auraScore: nextAura,
+            tierStatus: calculateTier(nextAura),
+          },
+          activeChallengeId: challengeId,
+        };
+      });
       return true;
     },
-    [state, persistState]
+    [persistState]
   );
 
   // Circadian check-in action (AM/PM) with 1.25x Multiplier Activation & Aura Reward
@@ -381,51 +457,54 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const now = Date.now();
       const today = getLocalDateKey(now);
-      const existingToday = state.circadianHistory[today] || {
-        dateString: today,
-        amCompleted: false,
-        amCompletedAt: null,
-        pmCompleted: false,
-        pmCompletedAt: null,
-        multiplierActive: false,
-      };
 
-      const updatedDay = {
-        ...existingToday,
-        amCompleted: type === 'am' ? true : existingToday.amCompleted,
-        amCompletedAt: type === 'am' ? now : existingToday.amCompletedAt,
-        pmCompleted: type === 'pm' ? true : existingToday.pmCompleted,
-        pmCompletedAt: type === 'pm' ? now : existingToday.pmCompletedAt,
-      };
+      await persistState((prev) => {
+        const existingToday = prev.circadianHistory[today] || {
+          dateString: today,
+          amCompleted: false,
+          amCompletedAt: null,
+          pmCompleted: false,
+          pmCompletedAt: null,
+          multiplierActive: false,
+        };
 
-      const wasMultiplierActive = existingToday.multiplierActive;
-      const isNowMultiplierActive = updatedDay.amCompleted && updatedDay.pmCompleted;
-      updatedDay.multiplierActive = isNowMultiplierActive;
+        const updatedDay = {
+          ...existingToday,
+          amCompleted: type === 'am' ? true : existingToday.amCompleted,
+          amCompletedAt: type === 'am' ? now : existingToday.amCompletedAt,
+          pmCompleted: type === 'pm' ? true : existingToday.pmCompleted,
+          pmCompletedAt: type === 'pm' ? now : existingToday.pmCompletedAt,
+        };
 
-      // Award bonus aura when circadian multiplier is newly locked for today
-      const auraBonus = !wasMultiplierActive && isNowMultiplierActive ? CIRCADIAN_AURA_REWARD : 0;
-      const nextAura = state.profile.auraScore + auraBonus;
+        const wasMultiplierActive = existingToday.multiplierActive;
+        const isNowMultiplierActive = updatedDay.amCompleted && updatedDay.pmCompleted;
+        updatedDay.multiplierActive = isNowMultiplierActive;
 
-      const nextState: AppStateData = {
-        ...state,
-        profile: {
-          ...state.profile,
-          auraScore: nextAura,
-          tierStatus: calculateTier(nextAura),
-        },
-        circadianHistory: {
-          ...state.circadianHistory,
-          [today]: updatedDay,
-        },
-      };
+        // Award bonus aura when circadian multiplier is newly locked for today
+        const auraBonus =
+          !wasMultiplierActive && isNowMultiplierActive ? CIRCADIAN_AURA_REWARD : 0;
+        const nextAura = prev.profile.auraScore + auraBonus;
 
-      await persistState(nextState);
+        return {
+          ...prev,
+          profile: {
+            ...prev.profile,
+            auraScore: nextAura,
+            tierStatus: calculateTier(nextAura),
+          },
+          circadianHistory: {
+            ...prev.circadianHistory,
+            [today]: updatedDay,
+          },
+        };
+      });
     },
-    [state, persistState]
+    [persistState]
   );
 
   const refreshState = useCallback(async () => {
     const fresh = await loadStoredAppState();
+    stateRef.current = fresh;
     setState(fresh);
     syncCurrentTime();
   }, [syncCurrentTime]);
@@ -442,13 +521,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     async (jsonBackup: string) => {
       const res = await importTelemetryBackup(jsonBackup);
       if (res.success && res.data) {
-        setState(res.data);
+        const restored = res.data;
+        commitState(() => restored);
         syncCurrentTime();
         return { success: true };
       }
       return { success: false, error: res.error || 'Failed to import backup' };
     },
-    [syncCurrentTime]
+    [commitState, syncCurrentTime]
   );
 
   const openPaywall = useCallback(() => {

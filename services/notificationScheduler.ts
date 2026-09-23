@@ -1,8 +1,23 @@
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { requestNotificationPermissions, cancelAllNotifications } from './notifications';
+import {
+  requestNotificationPermissions,
+  isNotificationScheduled,
+  cancelScheduledNotification,
+} from './notifications';
 
 export const NOTIFICATIONS_SCHEDULE_KEY = '@sovereign/notifications_schedule';
+
+/**
+ * Deterministic identifiers for the three cadence slots. Scheduling is idempotent:
+ * each slot is only scheduled when its identifier isn't already present, so enabling
+ * the cadence (or re-running the scheduler) never duplicates or wipes other reminders.
+ */
+export const CADENCE_NOTIFICATION_IDENTIFIERS = {
+  morning: 'sovereign_cadence_morning',
+  midday: 'sovereign_cadence_midday',
+  evening: 'sovereign_cadence_evening',
+} as const;
 
 const MORNING_MESSAGES = [
   "Morning Directive: 45 minutes of physical strain before sundown. Hold the standard.",
@@ -30,59 +45,66 @@ export async function scheduleDailyCadenceProtocol(): Promise<boolean> {
   const hasPermission = await requestNotificationPermissions();
   if (!hasPermission) return false;
 
-  await cancelAllNotifications();
-
-  // 1. Morning Directive (08:00 AM)
-  await Notifications.scheduleNotificationAsync({
-    content: {
+  // Schedule only the slots that are missing — never cancelAll. The old
+  // cancel-everything approach also wiped the 9 AM daily check-in; both
+  // reminders now coexist and each scheduler owns only its own identifiers.
+  const slots = [
+    {
+      identifier: CADENCE_NOTIFICATION_IDENTIFIERS.morning,
       title: 'Sovereign Morning',
       body: getRandomMessage(MORNING_MESSAGES),
-      sound: true,
       data: { type: 'cadence_morning' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: 8,
       minute: 0,
     },
-  });
-
-  // 2. Midday Anchor (02:00 PM)
-  await Notifications.scheduleNotificationAsync({
-    content: {
+    {
+      identifier: CADENCE_NOTIFICATION_IDENTIFIERS.midday,
       title: 'Sovereign Midday',
       body: getRandomMessage(MIDDAY_MESSAGES),
-      sound: true,
       data: { type: 'cadence_midday' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: 14,
       minute: 0,
     },
-  });
-
-  // 3. Evening Audit (08:30 PM)
-  await Notifications.scheduleNotificationAsync({
-    content: {
+    {
+      identifier: CADENCE_NOTIFICATION_IDENTIFIERS.evening,
       title: 'Sovereign Evening',
       body: getRandomMessage(EVENING_MESSAGES),
-      sound: true,
       data: { type: 'cadence_evening' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: 20,
       minute: 30,
     },
-  });
+  ];
+
+  for (const slot of slots) {
+    if (await isNotificationScheduled(slot.identifier)) {
+      continue;
+    }
+    await Notifications.scheduleNotificationAsync({
+      identifier: slot.identifier,
+      content: {
+        title: slot.title,
+        body: slot.body,
+        sound: true,
+        data: slot.data,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: slot.hour,
+        minute: slot.minute,
+      },
+    });
+  }
 
   await AsyncStorage.setItem(NOTIFICATIONS_SCHEDULE_KEY, 'true');
   return true;
 }
 
 export async function disableDailyCadenceProtocol(): Promise<void> {
-  await cancelAllNotifications();
+  // Cancel only the cadence slots — the daily check-in is owned by the launch
+  // scheduler and must survive toggling the cadence off.
+  for (const identifier of Object.values(CADENCE_NOTIFICATION_IDENTIFIERS)) {
+    await cancelScheduledNotification(identifier);
+  }
   await AsyncStorage.setItem(NOTIFICATIONS_SCHEDULE_KEY, 'false');
 }
 

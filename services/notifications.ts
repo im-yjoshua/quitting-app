@@ -69,6 +69,33 @@ export async function checkNotificationPermissions(): Promise<boolean> {
   }
 }
 
+/**
+ * Returns true when a notification with the given identifier is already scheduled.
+ * Used to make every scheduler idempotent: we schedule what's missing instead of
+ * cancelling everything and re-scheduling on every launch.
+ */
+export async function isNotificationScheduled(identifier: string): Promise<boolean> {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    return scheduled.some((n) => n.identifier === identifier);
+  } catch (error) {
+    console.warn('Failed to list scheduled notifications:', error);
+    return false;
+  }
+}
+
+/**
+ * Cancels a single scheduled notification by its identifier, leaving all other
+ * scheduled reminders untouched.
+ */
+export async function cancelScheduledNotification(identifier: string): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(identifier);
+  } catch (error) {
+    console.warn('Failed to cancel scheduled notification:', error);
+  }
+}
+
 export async function scheduleDailyCheckIn(
   hour: number = 9,
   minute: number = 0
@@ -79,10 +106,15 @@ export async function scheduleDailyCheckIn(
       return null;
     }
 
-    // Cancel existing scheduled notifications to avoid duplicates
-    await cancelAllNotifications();
+    // Idempotent: if the daily check-in is already scheduled (from onboarding or a
+    // previous launch), keep it. We never cancel-and-reschedule here — the old
+    // blind cancelAll wiped the user's 3/day cadence protocol on every launch.
+    if (await isNotificationScheduled(DAILY_ENCOURAGEMENT_IDENTIFIER)) {
+      return DAILY_ENCOURAGEMENT_IDENTIFIER;
+    }
 
     const notificationId = await Notifications.scheduleNotificationAsync({
+      identifier: DAILY_ENCOURAGEMENT_IDENTIFIER,
       content: {
         title: 'Sovereign Check-In',
         body: 'Hold the line today.',

@@ -7,6 +7,7 @@ import {
   ScrollView,
   Platform,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -27,7 +28,6 @@ import {
   setAdultContentFilter,
   ShieldState,
 } from '@/services/shield';
-import { scheduleDailyCheckIn, cancelAllNotifications } from '@/services/notifications';
 import { NotificationScheduleCard } from '@/components/settings/NotificationScheduleCard';
 
 interface DrawerNavigation {
@@ -106,7 +106,10 @@ export default function SettingsScreen() {
 
   const handleToggleBiometrics = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await toggleBiometrics();
+    const result = await toggleBiometrics();
+    if (result.error) {
+      Alert.alert('Biometric Lock', result.error);
+    }
   };
 
   const handleOpenDrawer = () => {

@@ -13,6 +13,7 @@
       "backgroundColor": "#07090E",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Sovereign uses Face ID to protect your personal history and stats.",
+        "NSMicrophoneUsageDescription": "Sovereign uses the microphone so you can record voice journal entries.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

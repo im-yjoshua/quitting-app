@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppStateData } from '@/types/app';
+import { AppStateData, RelapseRecord } from '@/types/app';
+import { getLocalDateKey } from './chronometerEngine';
 
 export type TimeRange = '7D' | '30D' | '90D' | 'ALL';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface IncidentRecord {
   timestamp: string; // ISO string
@@ -42,7 +45,7 @@ export async function fetchAnalytics(range: TimeRange, state: AppStateData | nul
   }
 
   if (state) {
-    incidents = state.relapseHistory.map((r: any) => ({
+    incidents = state.relapseHistory.map((r: RelapseRecord) => ({
       timestamp: new Date(r.timestamp).toISOString(),
       triggerNotes: r.notes || r.trigger,
     }));
@@ -84,21 +87,41 @@ export async function fetchAnalytics(range: TimeRange, state: AppStateData | nul
   });
 
   const actualStartMs = rangeMs === 0 ? firstLogDate : cutoff;
-  const totalDaysLogged = Math.max(1, Math.ceil((now - actualStartMs) / (24 * 60 * 60 * 1000)));
-  const slipDays = new Set(validIncidents.map(i => i.timestamp.split('T')[0])).size;
+  const totalDaysLogged = Math.max(1, Math.ceil((now - actualStartMs) / DAY_MS));
+  // Local-date day keys (not UTC slices) so "today" matches the rest of the app.
+  const slipDays = new Set(
+    validIncidents.map((i) => getLocalDateKey(new Date(i.timestamp).getTime()))
+  ).size;
   const cleanDays = Math.max(0, totalDaysLogged - slipDays);
   const commitmentRate = totalDaysLogged > 0 ? (cleanDays / totalDaysLogged) * 100 : 100;
 
   const daysInChart = range === '7D' ? 7 : range === '30D' ? 30 : range === '90D' ? 90 : 30;
-  
-  // Sync quests completed into discipline score (trendline)
-  // We simulate reading recent quest history. Since quest history might be complex, we blend the aura score.
-  const auraBonus = state ? Math.min(20, state.profile.auraScore / 100) : 0;
+
+  // Deterministic momentum trendline: for each chart day, the trailing 7-day
+  // commitment rate (clamped to the logging start) computed from real incident
+  // dates. No randomness — the chart is stable across refreshes and only moves
+  // when the underlying data does.
+  const incidentDayKeys = new Set(
+    validIncidents.map((i) => getLocalDateKey(new Date(i.timestamp).getTime()))
+  );
 
   const trendlineData = Array.from({ length: daysInChart }).map((_, i) => {
-    const base = commitmentRate;
-    const flux = (Math.sin(i * 0.5) * 5) + (Math.random() * 5 - 2.5);
-    return Math.min(100, Math.max(0, base + flux + (i === daysInChart - 1 ? auraBonus : 0)));
+    const dayDate = new Date(now);
+    dayDate.setHours(0, 0, 0, 0);
+    dayDate.setDate(dayDate.getDate() - (daysInChart - 1 - i));
+    const dayStartMs = dayDate.getTime();
+
+    const windowStartMs = Math.max(firstLogDate, dayStartMs - 6 * DAY_MS);
+    const windowDays = Math.max(1, Math.round((dayStartMs - windowStartMs) / DAY_MS) + 1);
+
+    let windowSlipDays = 0;
+    for (let d = 0; d < windowDays; d++) {
+      if (incidentDayKeys.has(getLocalDateKey(dayStartMs - d * DAY_MS))) {
+        windowSlipDays++;
+      }
+    }
+
+    return Math.max(0, Math.min(100, ((windowDays - windowSlipDays) / windowDays) * 100));
   });
 
   return {

@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { getLocalDateKey } from '../services/chronometerEngine';
 
 const STORAGE_KEY = '@sovereign/challenges_data';
 
@@ -69,26 +70,50 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
   const [data, setData] = useState<ChallengesData>(DEFAULT_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Mutable mirror of the latest committed data + serialized persist queue.
+  // Same stale-closure protection as AppDataContext: concurrent actions (quest
+  // complete + XP award) can never overwrite each other.
+  const dataRef = useRef<ChallengesData>(DEFAULT_DATA);
+  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const persistData = useCallback(
+    async (updater: (prev: ChallengesData) => ChallengesData): Promise<void> => {
+      const next = updater(dataRef.current);
+      dataRef.current = next;
+      setData(next);
+      const write = persistQueueRef.current.then(() =>
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      );
+      persistQueueRef.current = write.catch((err) => {
+        console.warn('[ChallengesContext] Failed to persist challenges data:', err);
+      });
+      await write;
+    },
+    []
+  );
+
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       let parsed: ChallengesData = stored ? JSON.parse(stored) : DEFAULT_DATA;
-      
-      const today = new Date().toISOString().split('T')[0];
+
+      const today = getLocalDateKey(Date.now());
       if (parsed.lastResetDate !== today) {
         // Reset daily quests
         parsed.dailyQuests = DEFAULT_QUESTS;
         parsed.lastResetDate = today;
       }
-      
+
       // Ensure schema syncs if we add new quests/challenges in code
       if (!parsed.dailyQuests || parsed.dailyQuests.length === 0) parsed.dailyQuests = DEFAULT_QUESTS;
       if (!parsed.sideChallenges || parsed.sideChallenges.length === 0) parsed.sideChallenges = DEFAULT_SIDE_CHALLENGES;
 
+      dataRef.current = parsed;
       setData(parsed);
       setIsLoaded(true);
       if (stored !== JSON.stringify(parsed)) {
@@ -100,25 +125,22 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
-  const saveData = async (newData: ChallengesData) => {
-    setData(newData);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-  };
-
   const addXp = async (amount: number) => {
-    const newData = { ...data, xp: data.xp + amount };
-    await saveData(newData);
+    await persistData((prev) => ({ ...prev, xp: prev.xp + amount }));
   };
 
   const completeDailyQuest = async (id: string) => {
-    const quest = data.dailyQuests.find(q => q.id === id);
+    const quest = dataRef.current.dailyQuests.find((q) => q.id === id);
     if (!quest || quest.completed) return;
-    
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const updatedQuests = data.dailyQuests.map(q => q.id === id ? { ...q, completed: true } : q);
-    
-    const newData = { ...data, dailyQuests: updatedQuests, xp: data.xp + 25 };
-    await saveData(newData);
+    await persistData((prev) => ({
+      ...prev,
+      dailyQuests: prev.dailyQuests.map((q) =>
+        q.id === id ? { ...q, completed: true } : q
+      ),
+      xp: prev.xp + 25,
+    }));
   };
 
   const logWorkout = async (type: string, duration: number) => {
@@ -127,25 +149,25 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
   };
 
   const progressSideChallenge = async (id: string) => {
-    const challenge = data.sideChallenges.find(c => c.id === id);
+    const today = getLocalDateKey(Date.now());
+    const challenge = dataRef.current.sideChallenges.find((c) => c.id === id);
     if (!challenge || challenge.completed) return;
 
-    const today = new Date().toISOString().split('T')[0];
     if (challenge.lastLogDate === today) return; // already progressed today
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const newCurrentDay = challenge.currentDay + 1;
     const completed = newCurrentDay >= challenge.totalDays;
-
-    const updated = data.sideChallenges.map(c => 
-      c.id === id ? { ...c, currentDay: newCurrentDay, completed, lastLogDate: today } : c
-    );
-
     const xpGained = completed ? 100 : 10; // small bump for daily progress, large for completion
-    
-    const newData = { ...data, sideChallenges: updated, xp: data.xp + xpGained };
-    await saveData(newData);
+
+    await persistData((prev) => ({
+      ...prev,
+      sideChallenges: prev.sideChallenges.map((c) =>
+        c.id === id ? { ...c, currentDay: newCurrentDay, completed, lastLogDate: today } : c
+      ),
+      xp: prev.xp + xpGained,
+    }));
   };
 
   // Determine tiers
