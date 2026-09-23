@@ -474,3 +474,81 @@ export async function saveEnvelopedList<T>(
   }
   return writeEnvelopedValue(key, list);
 }
+
+export type EnvelopedObjectStatus =
+  | 'ok'
+  | 'fresh-install'
+  | 'migrated-from-legacy'
+  | 'corrupted-quarantined';
+
+export interface EnvelopedObjectResult<T> {
+  readonly status: EnvelopedObjectStatus;
+  readonly object: T | null;
+  /** Present only when status is 'corrupted-quarantined'. */
+  readonly quarantinedKey?: string;
+}
+
+/**
+ * Loads a single typed object stored under its own key inside a
+ * checksum-verified envelope. Bare-JSON objects left by pre-envelope code are
+ * validated and migrated into envelopes automatically; corrupt payloads are
+ * quarantined, never trusted.
+ */
+export async function loadEnvelopedObject<T>(
+  key: string,
+  guard: (raw: unknown) => raw is T
+): Promise<EnvelopedObjectResult<T>> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(key);
+  } catch (error) {
+    console.warn(`[Storage] Failed to read key "${key}":`, error);
+    return { status: 'fresh-install', object: null };
+  }
+
+  if (raw === null) {
+    return { status: 'fresh-install', object: null };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const quarantinedKey = await quarantineCorruptPayload(key, raw);
+    return { status: 'corrupted-quarantined', object: null, quarantinedKey };
+  }
+
+  if (isStorageEnvelope<T>(parsed)) {
+    const dataJson = JSON.stringify(parsed.data);
+    if (parsed.checksum !== fnv1a32(dataJson) || !guard(parsed.data)) {
+      const quarantinedKey = await quarantineCorruptPayload(key, raw);
+      return { status: 'corrupted-quarantined', object: null, quarantinedKey };
+    }
+    return { status: 'ok', object: parsed.data };
+  }
+
+  // Legacy format: a bare JSON object. Validate, then migrate into an envelope.
+  if (guard(parsed)) {
+    await writeEnvelopedValue(key, parsed);
+    return { status: 'migrated-from-legacy', object: parsed };
+  }
+
+  const quarantinedKey = await quarantineCorruptPayload(key, raw);
+  return { status: 'corrupted-quarantined', object: null, quarantinedKey };
+}
+
+/**
+ * Persists a single typed object inside a checksum-verified envelope. Refuses
+ * to write payloads that fail validation rather than persisting garbage.
+ */
+export async function saveEnvelopedObject<T>(
+  key: string,
+  guard: (raw: unknown) => raw is T,
+  object: T
+): Promise<boolean> {
+  if (!guard(object)) {
+    console.warn(`[Storage] Refusing to persist invalid object at "${key}".`);
+    return false;
+  }
+  return writeEnvelopedValue(key, object);
+}

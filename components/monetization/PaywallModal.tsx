@@ -48,7 +48,7 @@ const SOVEREIGN_BENEFITS: FeatureBenefit[] = [
   },
   {
     icon: 'flame-outline',
-    title: 'Emergency Button & Reset Shield',
+    title: 'Emergency Button & Streak Protection',
     description: 'Instant guided routines to quickly beat strong urges and protect your streak.',
   },
   {

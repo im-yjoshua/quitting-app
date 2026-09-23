@@ -17,7 +17,7 @@ export interface AnalyticsData {
   totalDaysLogged: number;
   currentStreakDays: number;
   recordStreakDays: number;
-  shieldActivations: number;
+  emergencySessions: number;
   timeOfDayRisk: {
     morning: number;
     afternoon: number;
@@ -28,20 +28,45 @@ export interface AnalyticsData {
   trendlineData: number[];
 }
 
-const SHIELD_ACTIVATIONS_KEY = '@sovereign/shield_activations';
+const EMERGENCY_SESSIONS_KEY = '@sovereign/emergency_sessions';
+/** Key used before the honest reframe; migrated once, then removed. */
+const LEGACY_SHIELD_ACTIVATIONS_KEY = '@sovereign/shield_activations';
+
+/**
+ * Records one completed emergency-button press. The counter was previously
+ * never incremented anywhere, so the analytics card always showed a stale
+ * value; it is now wired to the real dashboard emergency button.
+ */
+export async function recordEmergencySession(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(EMERGENCY_SESSIONS_KEY);
+    const count = raw ? parseInt(raw, 10) || 0 : 0;
+    await AsyncStorage.setItem(EMERGENCY_SESSIONS_KEY, String(count + 1));
+  } catch (err) {
+    console.warn('Failed to record emergency session:', err);
+  }
+}
 
 export async function fetchAnalytics(range: TimeRange, state: AppStateData | null): Promise<AnalyticsData> {
   let incidents: IncidentRecord[] = [];
-  let shieldActivations = 0;
+  let emergencySessions = 0;
   let currentStreakMs = 0;
   let recordStreakMs = 0;
   let firstLogDate = Date.now() - (7 * 24 * 60 * 60 * 1000);
 
   try {
-    const shieldStr = await AsyncStorage.getItem(SHIELD_ACTIVATIONS_KEY);
-    if (shieldStr) shieldActivations = parseInt(shieldStr, 10);
+    let raw = await AsyncStorage.getItem(EMERGENCY_SESSIONS_KEY);
+    if (raw === null) {
+      // One-time migration from the pre-reframe key.
+      raw = await AsyncStorage.getItem(LEGACY_SHIELD_ACTIVATIONS_KEY);
+      if (raw !== null) {
+        await AsyncStorage.setItem(EMERGENCY_SESSIONS_KEY, raw);
+        await AsyncStorage.removeItem(LEGACY_SHIELD_ACTIVATIONS_KEY);
+      }
+    }
+    if (raw) emergencySessions = parseInt(raw, 10) || 0;
   } catch (err) {
-    console.warn('Failed to load shield activations:', err);
+    console.warn('Failed to load emergency sessions:', err);
   }
 
   if (state) {
@@ -130,7 +155,7 @@ export async function fetchAnalytics(range: TimeRange, state: AppStateData | nul
     totalDaysLogged,
     currentStreakDays: Math.floor(currentStreakMs / (24 * 60 * 60 * 1000)),
     recordStreakDays: Math.floor(recordStreakMs / (24 * 60 * 60 * 1000)),
-    shieldActivations,
+    emergencySessions,
     timeOfDayRisk,
     dayOfWeekRisk,
     trendlineData,

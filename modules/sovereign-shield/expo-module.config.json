@@ -1,7 +1,0 @@
-{
-  "name": "sovereign-shield",
-  "platforms": ["ios"],
-  "ios": {
-    "modules": ["SovereignShieldModule"]
-  }
-}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Shield, Target, CalendarDays, Flame } from 'lucide-react-native';
+import { Siren, Target, CalendarDays, Flame } from 'lucide-react-native';
 import { useAppTheme } from '@/context/ThemeContext';
 import { LiquidGlassCard } from '@/components/ui/LiquidGlassCard';
 import { AnalyticsData } from '@/services/analyticsService';
@@ -45,10 +45,10 @@ export function MetricCardsGrid({ data }: MetricCardsGridProps) {
           isDark={isDark}
         />
         <MetricCard 
-          title="Shield Uses" 
-          value={`${data.shieldActivations}`} 
-          subtitle="Safeguards Triggered" 
-          icon={<Shield size={20} color={colors.accent} />}
+          title="Emergency Sessions" 
+          value={`${data.emergencySessions}`} 
+          subtitle="Urge Circuit-Breakers Used" 
+          icon={<Siren size={20} color={colors.accent} />}
           colors={colors}
           isDark={isDark}
         />

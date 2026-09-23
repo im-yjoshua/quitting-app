@@ -22,12 +22,13 @@ import {
 } from '@/context/ThemeContext';
 import { useAppData } from '@/context/AppDataContext';
 import {
-  getShieldState,
-  requestFamilyControlsAuth,
-  openTriggerAppPicker,
-  setAdultContentFilter,
-  ShieldState,
-} from '@/services/shield';
+  getCommitmentState,
+  setTriggerApps,
+  setAdultContentCommitment,
+  AppCommitmentState,
+} from '@/services/commitments';
+import { TriggerAppsModal } from '@/components/commitments/TriggerAppsModal';
+import { ScreenTimeGuideModal } from '@/components/commitments/ScreenTimeGuideModal';
 import { NotificationScheduleCard } from '@/components/settings/NotificationScheduleCard';
 
 interface DrawerNavigation {
@@ -55,24 +56,25 @@ export default function SettingsScreen() {
   const navigation = useNavigation<DrawerNavigation>();
 
   
-  const [shieldState, setShieldState] = useState<ShieldState>({
-    isAuthorized: false,
-    isActive: false,
-    activeUntil: null,
-    shieldedAppCount: 0,
-    adultContentFilterEnabled: true,
+  const [commitmentState, setCommitmentState] = useState<AppCommitmentState>({
+    triggerApps: [],
+    adultContentCommitmentEnabled: true,
+    emergencySessionActive: false,
+    emergencySessionEndsAt: null,
   });
+  const [triggerAppsVisible, setTriggerAppsVisible] = useState(false);
+  const [screenTimeGuideVisible, setScreenTimeGuideVisible] = useState(false);
   const isDark = theme === 'dark';
 
   useEffect(() => {
     async function loadSettings() {
       try {
-        const [storedNotif, currentShield] = await Promise.all([
+        const [storedNotif, currentCommitments] = await Promise.all([
           AsyncStorage.getItem(NOTIFICATIONS_STORAGE_KEY),
-          getShieldState(),
+          getCommitmentState(),
         ]);
 
-        setShieldState(currentShield);
+        setCommitmentState(currentCommitments);
 
         if (storedNotif !== null) {
           
@@ -122,40 +124,41 @@ export default function SettingsScreen() {
     openPaywall();
   };
 
-  const handleRequestAuth = async () => {
+  const handleOpenTriggerApps = async () => {
     if (!isSovereignUser) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       openPaywall();
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await requestFamilyControlsAuth();
-    const updated = await getShieldState();
-    setShieldState(updated);
+    setTriggerAppsVisible(true);
   };
 
-  const handlePickApps = async () => {
+  const handleSaveTriggerApps = async (apps: string[]) => {
+    const updated = await setTriggerApps(apps);
+    setCommitmentState(updated);
+  };
+
+  const handleOpenScreenTimeGuide = async () => {
     if (!isSovereignUser) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       openPaywall();
       return;
     }
-    Haptics.selectionAsync();
-    await openTriggerAppPicker();
-    const updated = await getShieldState();
-    setShieldState(updated);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setScreenTimeGuideVisible(true);
   };
 
-  const handleToggleAdultFilter = async (val: boolean) => {
+  const handleToggleAdultCommitment = async (val: boolean) => {
     if (!isSovereignUser) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       openPaywall();
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await setAdultContentFilter(val);
-    const updated = await getShieldState();
-    setShieldState(updated);
+    await setAdultContentCommitment(val);
+    const updated = await getCommitmentState();
+    setCommitmentState(updated);
   };
 
   return (
@@ -445,10 +448,10 @@ export default function SettingsScreen() {
           </BlurView>
         </View>
 
-        {/* Group 3: Active Defense (Screen Time & ManagedSettings) */}
+        {/* Group 3: App Commitments */}
         <View style={styles.sectionHeaderRow}>
           <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
-            ACTIVE DEFENSE (SCREEN TIME)
+            APP COMMITMENTS
           </Text>
           <View
             style={[
@@ -489,89 +492,10 @@ export default function SettingsScreen() {
             tint={isDark ? 'dark' : 'light'}
             style={styles.blurCapsule}
           >
-            {/* Screen Time Authorization Row */}
+            {/* Trigger Apps Row */}
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={handleRequestAuth}
-              style={styles.row}
-            >
-              <View style={styles.rowLeft}>
-                <View
-                  style={[
-                    styles.iconBox,
-                    {
-                      backgroundColor: isDark
-                        ? 'rgba(255, 255, 255, 0.06)'
-                        : 'rgba(0, 0, 0, 0.05)',
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="shield-checkmark-outline"
-                    size={18}
-                    color={shieldState.isAuthorized ? colors.accent : colors.textPrimary}
-                  />
-                </View>
-                <View style={styles.rowTextBlock}>
-                  <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
-                    FamilyControls Access
-                  </Text>
-                  <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                    {shieldState.isAuthorized
-                      ? 'OS-level shield permissions active'
-                      : 'Required to enforce emergency app block'}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.authBadge,
-                  {
-                    backgroundColor: shieldState.isAuthorized
-                      ? colors.accentSubtle
-                      : isDark
-                      ? 'rgba(255, 255, 255, 0.08)'
-                      : 'rgba(0, 0, 0, 0.06)',
-                    borderColor: shieldState.isAuthorized
-                      ? colors.accent
-                      : isDark
-                      ? 'rgba(255, 255, 255, 0.15)'
-                      : 'rgba(0, 0, 0, 0.15)',
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.authBadgeText,
-                    {
-                      color: shieldState.isAuthorized
-                        ? colors.accent
-                        : colors.textPrimary,
-                    },
-                  ]}
-                >
-                  {shieldState.isAuthorized ? 'AUTHORIZED' : 'AUTHORIZE'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Hairline Separator */}
-            <View
-              style={[
-                styles.separator,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255, 255, 255, 0.06)'
-                    : 'rgba(150, 150, 150, 0.2)',
-                },
-              ]}
-            />
-
-            {/* Trigger App Selection Row */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={handlePickApps}
+              onPress={handleOpenTriggerApps}
               style={styles.row}
             >
               <View style={styles.rowLeft}>
@@ -593,12 +517,12 @@ export default function SettingsScreen() {
                 </View>
                 <View style={styles.rowTextBlock}>
                   <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
-                    Shielded Trigger Apps
+                    Trigger Apps I'm Avoiding
                   </Text>
                   <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                    {shieldState.shieldedAppCount > 0
-                      ? `${shieldState.shieldedAppCount} app${shieldState.shieldedAppCount === 1 ? '' : 's'} locked during emergency`
-                      : 'Choose distracting apps (Opaque Tokens)'}
+                    {commitmentState.triggerApps.length > 0
+                      ? `${commitmentState.triggerApps.length} app${commitmentState.triggerApps.length === 1 ? '' : 's'} in my commitment`
+                      : 'Choose the apps you commit to avoid'}
                   </Text>
                 </View>
               </View>
@@ -608,15 +532,15 @@ export default function SettingsScreen() {
                   style={[
                     styles.chevronBadgeText,
                     {
-                      color: shieldState.shieldedAppCount > 0
+                      color: commitmentState.triggerApps.length > 0
                         ? colors.accent
                         : colors.textSecondary,
                     },
                   ]}
                 >
-                  {shieldState.shieldedAppCount > 0
-                    ? `${shieldState.shieldedAppCount} Selected`
-                    : 'Select'}
+                  {commitmentState.triggerApps.length > 0
+                    ? `${commitmentState.triggerApps.length} Committed`
+                    : 'Choose'}
                 </Text>
                 <Ionicons
                   name="chevron-forward"
@@ -638,7 +562,69 @@ export default function SettingsScreen() {
               ]}
             />
 
-            {/* Explicit Web Filter Row */}
+            {/* iOS Screen Time Guide Row */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleOpenScreenTimeGuide}
+              style={styles.row}
+            >
+              <View style={styles.rowLeft}>
+                <View
+                  style={[
+                    styles.iconBox,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.06)'
+                        : 'rgba(0, 0, 0, 0.05)',
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="phone-portrait-outline"
+                    size={18}
+                    color={colors.textPrimary}
+                  />
+                </View>
+                <View style={styles.rowTextBlock}>
+                  <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
+                    Set Up iOS Screen Time
+                  </Text>
+                  <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+                    Sovereign can't block apps — add real limits in Settings
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.chevronBadge}>
+                <Text
+                  style={[
+                    styles.chevronBadgeText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Guide
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {/* Hairline Separator */}
+            <View
+              style={[
+                styles.separator,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255, 255, 255, 0.06)'
+                    : 'rgba(150, 150, 150, 0.2)',
+                },
+              ]}
+            />
+
+            {/* Adult Content Commitment Row */}
             <View style={styles.row}>
               <View style={styles.rowLeft}>
                 <View
@@ -659,16 +645,16 @@ export default function SettingsScreen() {
                 </View>
                 <View style={styles.rowTextBlock}>
                   <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>
-                    Adult Content Filter
+                    Adult Content Commitment
                   </Text>
                   <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                    OS WebContent block during active shield
+                    Include adult content in my daily avoidance pledge
                   </Text>
                 </View>
               </View>
               <Switch
-                value={shieldState.adultContentFilterEnabled}
-                onValueChange={handleToggleAdultFilter}
+                value={commitmentState.adultContentCommitmentEnabled}
+                onValueChange={handleToggleAdultCommitment}
                 trackColor={{ true: colors.accent, false: 'rgba(150, 150, 150, 0.3)' }}
               />
             </View>
@@ -676,12 +662,12 @@ export default function SettingsScreen() {
             {/* Explanatory Footer */}
             <View style={styles.iconFootnote}>
               <Ionicons
-                name="shield-outline"
+                name="information-circle-outline"
                 size={13}
                 color={colors.textSecondary}
               />
               <Text style={[styles.iconFootnoteText, { color: colors.textSecondary }]}>
-                Air-Gapped: Uses Apple Opaque Tokens. Sovereign never sees your app list or browsing history.
+                Sovereign cannot block or limit other apps. Your list is a personal commitment — everything stays on your device.
               </Text>
             </View>
           </BlurView>
@@ -823,6 +809,17 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      <TriggerAppsModal
+        visible={triggerAppsVisible}
+        initialApps={commitmentState.triggerApps}
+        onClose={() => setTriggerAppsVisible(false)}
+        onSave={handleSaveTriggerApps}
+      />
+      <ScreenTimeGuideModal
+        visible={screenTimeGuideVisible}
+        onClose={() => setScreenTimeGuideVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -989,17 +986,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.8,
-  },
-  authBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  authBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   chevronBadge: {
     flexDirection: 'row',

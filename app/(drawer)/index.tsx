@@ -35,7 +35,8 @@ import { ResetConfirmationModal } from '@/components/dashboard/ResetConfirmation
 import { ImpulseNeutralizerModal } from '@/components/dashboard/ImpulseNeutralizerModal';
 import { BreathingSphereModal } from '@/components/dashboard/BreathingSphereModal';
 import { EmergencyModal } from '@/components/EmergencyModal';
-import { activateEmergencyShield } from '@/services/shield';
+import { startEmergencySession } from '@/services/commitments';
+import { recordEmergencySession } from '@/services/analyticsService';
 
 export default function CommandDashboardScreen() {
   const { refreshState, state, cleanDurationMs, openPaywall } = useAppData();
@@ -138,7 +139,8 @@ export default function CommandDashboardScreen() {
           activeOpacity={0.8}
           onPress={async () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            await activateEmergencyShield(15);
+            await startEmergencySession(15);
+            await recordEmergencySession();
             setEmergencyModalVisible(true);
           }}
           style={[
