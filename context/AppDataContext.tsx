@@ -99,15 +99,11 @@ const AppDataContext = createContext<AppDataContextValue | null>(null);
 
 const INTERVENTION_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes strict anti-exploit window
 
+import { calculateTier } from '../services/auraTiers';
+
 // Monotonic per-session counter so relapse IDs are unique without randomness.
 // Combined with the millisecond timestamp, IDs are unique across sessions too.
 let relapseIdCounter = 0;
-
-function calculateTier(auraScore: number): AuraTier {
-  if (auraScore >= 2000) return 'Sovereign';
-  if (auraScore >= 500) return 'Sentinel';
-  return 'Initiate';
-}
 
 export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppStateData>(DEFAULT_APP_STATE);

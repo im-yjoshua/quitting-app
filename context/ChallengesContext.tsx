@@ -2,16 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { getLocalDateKey } from '../services/chronometerEngine';
+import { TIERS, resolveChallengeTier } from '../services/challengeTiers';
+// Re-exported so any existing importer of the context module keeps working.
+export { TIERS, resolveChallengeTier };
 
 const STORAGE_KEY = '@sovereign/challenges_data';
-
-export const TIERS = [
-  { level: 1, name: 'Initiate', minXp: 0, colors: ['#94A3B8', '#CBD5E1'] },
-  { level: 2, name: 'Vanguard', minXp: 151, colors: ['#2563EB', '#38BDF8'] },
-  { level: 3, name: 'Ascendant', minXp: 501, colors: ['#7C3AED', '#C084FC'] },
-  { level: 4, name: 'Imperator', minXp: 1201, colors: ['#D97706', '#FDE047'] },
-  { level: 5, name: 'Sovereign', minXp: 2501, colors: ['#059669', '#34D399'] },
-];
 
 export interface DailyQuest {
   id: string;
@@ -65,29 +60,6 @@ interface ChallengesContextType {
 }
 
 const ChallengesContext = createContext<ChallengesContextType | undefined>(undefined);
-
-/**
- * Single source of truth for challenge-XP tier resolution.
- * Pure function — no independent tier computation may live in screens/services.
- */
-export function resolveChallengeTier(xp: number): {
-  currentTier: typeof TIERS[0];
-  nextTier: typeof TIERS[0] | null;
-} {
-  let currentTier = TIERS[0];
-  let nextTier: typeof TIERS[0] | null = null;
-
-  for (let i = 0; i < TIERS.length; i++) {
-    if (xp >= TIERS[i].minXp) {
-      currentTier = TIERS[i];
-      nextTier = TIERS[i + 1] || null;
-    } else {
-      break;
-    }
-  }
-
-  return { currentTier, nextTier };
-}
 
 export function ChallengesProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<ChallengesData>(DEFAULT_DATA);

@@ -98,8 +98,8 @@ export default function RoadmapScreen() {
   const [expandedStageId, setExpandedStageId] = useState<string | null>(null);
 
 
-  // Derive active clean days
-  const currentDaysClean = Math.max(1, Math.floor(cleanDurationMs / (1000 * 60 * 60 * 24)));
+  // Derive active clean days — honest count: day zero shows 0, not 1.
+  const currentDaysClean = Math.floor(cleanDurationMs / (1000 * 60 * 60 * 24));
   const progressPercent = Math.min(100, Math.round((currentDaysClean / 90) * 100));
 
   const handleStagePress = (stage: RecoveryStage) => {
