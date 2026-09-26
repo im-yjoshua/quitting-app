@@ -18,7 +18,7 @@ import { scheduleDailyCheckIn } from '@/services/notifications';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigationLayout() {
-  const { state, isLoading, cleanDurationMs, isPaywallVisible, closePaywall } = useAppData();
+  const { state, isLoading, isPaywallVisible, closePaywall } = useAppData();
   const { colors, theme } = useAppTheme();
   const segments = useSegments();
   const router = useRouter();

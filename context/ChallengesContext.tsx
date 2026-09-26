@@ -2,12 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import * as Haptics from 'expo-haptics';
 import { getLocalDateKey } from '../services/chronometerEngine';
 import { loadEnvelopedObject, saveEnvelopedObject } from '../services/storage';
+import { MAX_WORKOUTS_PER_DAY, workoutLogAllowed, workoutsLoggedOn } from '../services/rewardRules';
 import { TIERS, resolveChallengeTier } from '../services/challengeTiers';
 export { TIERS, resolveChallengeTier };
 
 const STORAGE_KEY = '@sovereign/challenges_data';
-const MIN_WORKOUT_MINUTES = 10;
-const MAX_WORKOUTS_PER_DAY = 2;
 
 export interface DailyQuest {
   id: string;
@@ -184,19 +183,34 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
   };
 
   const logWorkout = async (type: string, duration: number): Promise<boolean> => {
-    if (!type || !Number.isFinite(duration) || duration < MIN_WORKOUT_MINUTES) {
+    const now = Date.now();
+    if (
+      !workoutLogAllowed({
+        type,
+        durationMinutes: duration,
+        lastWorkoutDate: dataRef.current.lastWorkoutDate,
+        workoutsLoggedToday: dataRef.current.workoutsLoggedToday,
+        nowMs: now,
+      })
+    ) {
       return false;
     }
-    const today = getLocalDateKey(Date.now());
-    const current = dataRef.current;
-    const loggedToday =
-      current.lastWorkoutDate === today ? current.workoutsLoggedToday : 0;
-    if (loggedToday >= MAX_WORKOUTS_PER_DAY) return false;
+    const today = getLocalDateKey(now);
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await persistData((prev) => {
-      const count = prev.lastWorkoutDate === today ? prev.workoutsLoggedToday : 0;
-      if (count >= MAX_WORKOUTS_PER_DAY) return prev;
+      if (
+        !workoutLogAllowed({
+          type,
+          durationMinutes: duration,
+          lastWorkoutDate: prev.lastWorkoutDate,
+          workoutsLoggedToday: prev.workoutsLoggedToday,
+          nowMs: now,
+        })
+      ) {
+        return prev;
+      }
+      const count = workoutsLoggedOn(prev.lastWorkoutDate, prev.workoutsLoggedToday, now);
       return {
         ...prev,
         xp: prev.xp + 50,

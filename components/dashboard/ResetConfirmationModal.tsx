@@ -14,6 +14,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppData } from '../../context/AppDataContext';
+import { useNow } from '../../hooks/useNow';
+import { calculateCleanDurationMs } from '../../services/chronometerEngine';
+import { calculateCleanReceipt, formatMinutesReclaimed, formatMoneyKept } from '../../services/cleanReceipt';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { RelapseTrigger } from '../../types/app';
 
@@ -72,8 +75,10 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
   visible,
   onClose,
 }) => {
-  const { state, cleanDurationMs, recordRelapse } = useAppData();
-  const { attemptCount, weeklyCostEstimated, dailyMinutesWasted } = state.profile;
+  const { state, recordRelapse } = useAppData();
+  const now = useNow(1000);
+  const { attemptCount, weeklyCostEstimated, dailyMinutesWasted, startDate } = state.profile;
+  const cleanDurationMs = calculateCleanDurationMs(now, startDate);
 
   const [selectedTrigger, setSelectedTrigger] = useState<RelapseTrigger>('late_night_bed_scrolling');
   const [isResetting, setIsResetting] = useState(false);
@@ -87,11 +92,9 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
   const forfeitedDays = Math.floor(totalHoursClean / 24);
   const forfeitedHours = totalHoursClean % 24;
 
-  const hoursWastedProjected = ((cleanDurationMs / (1000 * 60 * 60 * 24)) * (dailyMinutesWasted / 60)).toFixed(1);
-  const capitalProtectedProjected = (
-    (cleanDurationMs / (1000 * 60 * 60 * 24 * 7)) *
-    weeklyCostEstimated
-  ).toFixed(0);
+  const receipt = calculateCleanReceipt(cleanDurationMs, weeklyCostEstimated, dailyMinutesWasted);
+  const hoursWastedProjected = formatMinutesReclaimed(receipt.minutesReclaimed);
+  const capitalProtectedProjected = formatMoneyKept(receipt.moneyKept);
 
   const handleSelectTrigger = (trigger: RelapseTrigger) => {
     Haptics.selectionAsync();
@@ -205,7 +208,7 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
 
                 <View style={styles.projectionSubRow}>
                   <Text style={styles.projectionText}>
-                    Streak safeguarded <Text style={styles.projectionHighlight}>{hoursWastedProjected} hrs</Text> and <Text style={styles.projectionHighlight}>${capitalProtectedProjected}</Text> before surrender.
+                    Streak safeguarded <Text style={styles.projectionHighlight}>{hoursWastedProjected}</Text> and <Text style={styles.projectionHighlight}>{capitalProtectedProjected}</Text> before surrender.
                   </Text>
                 </View>
               </BlurView>
