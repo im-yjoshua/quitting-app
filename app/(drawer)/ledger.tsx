@@ -67,7 +67,7 @@ interface DrawerNavigation {
 
 export default function LedgerScreen() {
   const { state, isSovereignUser, openPaywall } = useAppData();
-  const { relapseHistory, profile } = state;
+  const { relapseHistory, profile, nearMisses = [] } = state;
   const { colors, theme } = useAppTheme();
   const navigation = useNavigation<DrawerNavigation>();
   const isDark = theme === 'dark';
@@ -234,6 +234,34 @@ export default function LedgerScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Urges that were faced. These are not slips and do not reset the streak. */}
+        {nearMisses.length > 0 && (
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>URGES YOU BEAT</Text>
+          </View>
+        )}
+        {nearMisses.slice(0, 20).map((miss) => {
+          const meta = TRIGGER_META[miss.trigger] || TRIGGER_META.other;
+          return (
+            <View key={miss.id} style={styles.recordCardWrapper}>
+              <BlurView
+                intensity={GlassBlur.intensity.standard}
+                tint={GlassBlur.tint}
+                blurMethod={GlassBlur.blurMethod}
+                style={styles.recordCard}
+              >
+                <View style={styles.recordHeaderRow}>
+                  <View style={styles.attemptBadge}>
+                    <Text style={styles.attemptBadgeText}>NEAR MISS</Text>
+                  </View>
+                  <Text style={styles.recordDate}>{formatDate(miss.timestamp)}</Text>
+                </View>
+                <Text style={styles.forfeitedDuration}>{meta.label}</Text>
+              </BlurView>
+            </View>
+          );
+        })}
 
         {/* Historical Chronological Records */}
         <View style={styles.sectionHeaderRow}>

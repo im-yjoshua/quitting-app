@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect, useState, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet, AppState, AppStateStatus } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, AppState, AppStateStatus, Platform } from 'react-native';
 import { Stack, useRouter, useSegments, useRootNavigationState, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,11 +14,15 @@ import { AnimatedSplashOverlay } from '@/components/AnimatedSplashOverlay';
 import { isAuthenticationInProgress } from '@/services/biometrics';
 import * as Notifications from 'expo-notifications';
 import { scheduleDailyCheckIn } from '@/services/notifications';
+import { routeForNotificationAction } from '@/services/urgeEntry';
+import * as QuickActions from 'expo-quick-actions';
+import { useQuickActionRouting } from 'expo-quick-actions/router';
 
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigationLayout() {
   const { state, isLoading, isPaywallVisible, closePaywall } = useAppData();
+  useQuickActionRouting();
   const { colors, theme } = useAppTheme();
   const segments = useSegments();
   const router = useRouter();
@@ -115,6 +119,20 @@ function RootNavigationLayout() {
     }
   }, [isLoading]);
 
+  useEffect(() => {
+    QuickActions.setItems([
+      {
+        id: 'beat-urge',
+        title: 'Beat the Urge',
+        subtitle: 'Open the drill',
+        icon: Platform.OS === 'ios' ? 'symbol:bolt.fill' : undefined,
+        params: { href: '/?modal=urge' },
+      },
+    ]).catch((error) => {
+      console.warn('Failed to set the Beat the Urge quick action:', error);
+    });
+  }, []);
+
   // Synchronize daily check-in notifications when streak is active
   useEffect(() => {
     if (!isLoading && state.profile.isOnboarded) {
@@ -122,13 +140,21 @@ function RootNavigationLayout() {
     }
   }, [isLoading, state.profile.isOnboarded]);
 
-  // Handle tap on notifications
+  // Handle tap on notifications. Only the Beat the Urge action opens the drill.
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(() => {
-      if (state.profile.isOnboarded) {
+    const openFromResponse = (actionIdentifier: string | undefined) => {
+      const route = routeForNotificationAction(actionIdentifier, state.profile.isOnboarded);
+      if (route === 'urge') {
+        router.push('/?modal=urge');
+      } else if (route === 'home') {
         router.push('/(drawer)');
       }
+    };
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      openFromResponse(response.actionIdentifier);
     });
+
     return () => subscription.remove();
   }, [state.profile.isOnboarded, router]);
 
