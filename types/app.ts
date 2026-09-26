@@ -123,6 +123,8 @@ export interface AppStateData {
   interventionState: UrgeInterventionState;
   circadianHistory: CircadianHistory;
   activeChallengeId: string | null;
+  /** challengeId -> local YYYY-MM-DD of the last aura claim. Optional for v1 payloads. */
+  challengeClaims?: Record<string, string>;
 }
 
 export type PurchasePlan = 'annual' | 'lifetime';

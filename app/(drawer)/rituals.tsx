@@ -149,14 +149,16 @@ export default function RitualsScreen() {
 
   const handleCompleteAmPhase = async () => {
     if (todayRecord.amCompleted) return;
+    const ok = await completeCircadianRitual('am');
+    if (!ok) return;
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await completeCircadianRitual('am');
   };
 
   const handleCompletePmPhase = async () => {
     if (todayRecord.pmCompleted) return;
+    const ok = await completeCircadianRitual('pm');
+    if (!ok) return;
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await completeCircadianRitual('pm');
   };
 
   const formatTimestamp = (epochMs: number | null) => {

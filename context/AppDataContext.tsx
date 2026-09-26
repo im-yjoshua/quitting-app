@@ -77,10 +77,10 @@ interface AppDataContextValue {
   recordRelapse: (trigger: RelapseTrigger, notes?: string) => Promise<void>;
   claimInterventionAura: (drillType: InterventionDrillType, auraAward?: number) => Promise<boolean>;
   claimChallengeAura: (challengeId: string, auraAward: number) => Promise<boolean>;
-  completeCircadianRitual: (type: 'am' | 'pm') => Promise<void>;
+  completeCircadianRitual: (type: 'am' | 'pm') => Promise<boolean>;
   refreshState: () => Promise<void>;
   syncCurrentTime: () => void;
-  exportTelemetry: () => Promise<{ success: boolean; error?: string }>;
+  exportTelemetry: () => Promise<{ success: boolean; data?: string; error?: string }>;
   importTelemetry: (jsonBackup: string) => Promise<{ success: boolean; error?: string }>;
   // Storage integrity & recovery — surfaced so the user is told when their
   // saved data failed its integrity check instead of being silently reset.
@@ -455,9 +455,17 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Timed challenge completion claim
   const claimChallengeAura = useCallback(
     async (challengeId: string, auraAward: number): Promise<boolean> => {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const today = getLocalDateKey(Date.now());
+      if ((stateRef.current.challengeClaims ?? {})[challengeId] === today) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return false;
+      }
 
+      let awarded = false;
       await persistState((prev) => {
+        const claims = prev.challengeClaims ?? {};
+        if (claims[challengeId] === today) return prev;
+        awarded = true;
         const nextAura = prev.profile.auraScore + auraAward;
         return {
           ...prev,
@@ -467,20 +475,29 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             tierStatus: calculateTier(nextAura),
           },
           activeChallengeId: challengeId,
+          challengeClaims: { ...claims, [challengeId]: today },
         };
       });
+      if (!awarded) return false;
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return true;
     },
     [persistState]
   );
 
-  // Circadian check-in action (AM/PM) with 1.25x Multiplier Activation & Aura Reward
   const completeCircadianRitual = useCallback(
-    async (type: 'am' | 'pm') => {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
+    async (type: 'am' | 'pm'): Promise<boolean> => {
       const now = Date.now();
+      const hour = new Date(now).getHours();
+      if (type === 'am' && hour >= 12) return false;
+      if (type === 'pm' && hour < 12) return false;
+
       const today = getLocalDateKey(now);
+      const existing = stateRef.current.circadianHistory[today];
+      if (type === 'am' && existing?.amCompleted) return false;
+      if (type === 'pm' && existing?.pmCompleted) return false;
+
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
       await persistState((prev) => {
         const existingToday = prev.circadianHistory[today] || {
@@ -491,6 +508,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
           pmCompletedAt: null,
           multiplierActive: false,
         };
+        if (type === 'am' && existingToday.amCompleted) return prev;
+        if (type === 'pm' && existingToday.pmCompleted) return prev;
 
         const updatedDay = {
           ...existingToday,
@@ -504,7 +523,6 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const isNowMultiplierActive = updatedDay.amCompleted && updatedDay.pmCompleted;
         updatedDay.multiplierActive = isNowMultiplierActive;
 
-        // Award bonus aura when circadian multiplier is newly locked for today
         const auraBonus =
           !wasMultiplierActive && isNowMultiplierActive ? CIRCADIAN_AURA_REWARD : 0;
         const nextAura = prev.profile.auraScore + auraBonus;
@@ -522,6 +540,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
           },
         };
       });
+      return true;
     },
     [persistState]
   );
@@ -536,7 +555,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   const exportTelemetry = useCallback(async () => {
     const result = await exportTelemetryBackup();
     if (result.success) {
-      return { success: true };
+      return { success: true, data: result.data };
     }
     return { success: false, error: result.error };
   }, []);
