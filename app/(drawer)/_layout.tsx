@@ -5,7 +5,7 @@ import { Drawer, DrawerContentScrollView } from 'expo-router/drawer';
 import { useRouter, usePathname } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Home, Trophy, BookOpen, BarChart3, Settings, Gem, ScrollText, Sunrise, Route } from 'lucide-react-native';
+import { Home, Trophy, BookOpen, BarChart3, Settings, Gem, ScrollText, Sunrise, Route, CalendarDays } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '@/context/ThemeContext';
 import { useAppData } from '@/context/AppDataContext';
@@ -34,6 +34,7 @@ function CustomDrawerContent(props: any) {
     { id: 'journal', label: 'Journal', icon: BookOpen, route: '/(drawer)/journal' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, route: '/(drawer)/analytics' },
     { id: 'ledger', label: 'Ledger', icon: ScrollText, route: '/(drawer)/ledger' },
+    { id: 'review', label: 'This Week', icon: CalendarDays, route: '/(drawer)/review' },
     { id: 'rituals', label: 'Rituals', icon: Sunrise, route: '/(drawer)/rituals' },
     { id: 'roadmap', label: 'Roadmap', icon: Route, route: '/(drawer)/roadmap' },
     { id: 'settings', label: 'Settings', icon: Settings, route: '/(drawer)/settings' },
@@ -75,6 +76,9 @@ function CustomDrawerContent(props: any) {
     }
     if (item.id === 'ledger') {
       return pathname.includes('ledger');
+    }
+    if (item.id === 'review') {
+      return pathname.includes('review');
     }
     if (item.id === 'rituals') {
       return pathname.includes('rituals');
@@ -250,6 +254,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="journal" options={{ headerShown: false }} />
       <Drawer.Screen name="analytics" options={{ headerShown: false }} />
       <Drawer.Screen name="ledger" options={{ headerShown: false }} />
+      <Drawer.Screen name="review" options={{ headerShown: false }} />
       <Drawer.Screen name="rituals" options={{ headerShown: false }} />
       <Drawer.Screen name="roadmap" options={{ headerShown: false }} />
       <Drawer.Screen name="settings" options={{ headerShown: false }} />
