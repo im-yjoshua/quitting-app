@@ -111,6 +111,7 @@ const INTERVENTION_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes strict anti-explo
 
 import { calculateTier } from '../services/auraTiers';
 import { challengeAlreadyClaimedToday, circadianWindowAllows } from '../services/rewardRules';
+import { calculateCleanReceipt } from '../services/cleanReceipt';
 
 // Monotonic per-session counter so relapse IDs are unique without randomness.
 // Combined with the millisecond timestamp, IDs are unique across sessions too.
@@ -371,6 +372,11 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         );
 
         const nextAura = Math.max(0, prev.profile.auraScore - forfeiture.forfeitedAura);
+        const receipt = calculateCleanReceipt(
+          forfeiture.forfeitedCleanDurationMs,
+          prev.profile.weeklyCostEstimated,
+          prev.profile.dailyMinutesWasted
+        );
 
         const newRecord: RelapseRecord = {
           id: `relapse_${now}_${(relapseIdCounter++).toString(36)}`,
@@ -381,6 +387,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
           reflection: notes?.trim() || undefined,
           attemptNumber: prev.profile.attemptCount,
           forfeitedAura: forfeiture.forfeitedAura,
+          moneyKept: receipt.moneyKept,
+          minutesReclaimed: receipt.minutesReclaimed,
         };
 
         const updatedCircadian = { ...prev.circadianHistory };

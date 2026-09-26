@@ -16,6 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useAppData } from '../../context/AppDataContext';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { RelapseTrigger, RelapseRecord } from '../../types/app';
+import { formatMinutesReclaimed, formatMoneyKept } from '../../services/cleanReceipt';
 import { SovereignLockPill } from '../../components/monetization/SovereignLockPill';
 
 
@@ -308,6 +309,11 @@ export default function LedgerScreen() {
                       <Text style={styles.forfeitedDuration}>
                         {formatDuration(record.cleanDurationMs)}
                       </Text>
+                      {record.moneyKept !== undefined && record.minutesReclaimed !== undefined && (
+                        <Text style={styles.receiptLost}>
+                          {formatMoneyKept(record.moneyKept)} kept · {formatMinutesReclaimed(record.minutesReclaimed)} back
+                        </Text>
+                      )}
                     </View>
 
                     {/* Attribution Tag */}
@@ -619,6 +625,13 @@ const styles = StyleSheet.create({
     color: Palette.textPrimary,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.4,
+  },
+  receiptLost: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Palette.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
   attributionTag: {
     flexDirection: 'row',

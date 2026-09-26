@@ -37,6 +37,10 @@ export interface RelapseRecord {
   readonly attemptNumber: number;
   /** Aura reputation penalty deducted upon relapse */
   readonly forfeitedAura: number;
+  /** Estimated money kept during the forfeited run. Absent on records written before the receipt. */
+  readonly moneyKept?: number;
+  /** Estimated minutes given back during the forfeited run. Absent on older records. */
+  readonly minutesReclaimed?: number;
 }
 
 /**
@@ -220,7 +224,10 @@ export function isRelapseRecord(raw: unknown): raw is RelapseRecord {
     typeof r.attemptNumber === 'number' &&
     !isNaN(r.attemptNumber) &&
     typeof r.forfeitedAura === 'number' &&
-    !isNaN(r.forfeitedAura)
+    !isNaN(r.forfeitedAura) &&
+    (r.moneyKept === undefined || (typeof r.moneyKept === 'number' && !isNaN(r.moneyKept))) &&
+    (r.minutesReclaimed === undefined ||
+      (typeof r.minutesReclaimed === 'number' && !isNaN(r.minutesReclaimed)))
   );
 }
 
