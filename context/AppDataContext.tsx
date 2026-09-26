@@ -74,7 +74,10 @@ interface AppDataContextValue {
     weeklyCost: number,
     dailyMinutes: number
   ) => Promise<void>;
-  recordRelapse: (trigger: RelapseTrigger, notes?: string) => Promise<void>;
+  recordRelapse: (
+    trigger: RelapseTrigger,
+    debrief?: { where?: string; nextStep?: string }
+  ) => Promise<void>;
   claimInterventionAura: (drillType: InterventionDrillType, auraAward?: number) => Promise<boolean>;
   claimChallengeAura: (challengeId: string, auraAward: number) => Promise<boolean>;
   completeCircadianRitual: (type: 'am' | 'pm') => Promise<boolean>;
@@ -112,6 +115,7 @@ const INTERVENTION_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes strict anti-explo
 import { calculateTier } from '../services/auraTiers';
 import { challengeAlreadyClaimedToday, circadianWindowAllows } from '../services/rewardRules';
 import { calculateCleanReceipt } from '../services/cleanReceipt';
+import { cleanDebriefText, formatDebriefNotes } from '../services/slipDebrief';
 
 // Monotonic per-session counter so relapse IDs are unique without randomness.
 // Combined with the millisecond timestamp, IDs are unique across sessions too.
@@ -350,13 +354,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // Relapse report execution (Truthful record, cold reset with forfeited aura & duration)
   const recordRelapse = useCallback(
-    async (trigger: RelapseTrigger, notes?: string) => {
+    async (trigger: RelapseTrigger, debrief?: { where?: string; nextStep?: string }) => {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
       const now = Date.now();
-
-      // Reset today's circadian record for the new attempt so new streak starts fresh
       const today = getLocalDateKey(now);
+      const where = cleanDebriefText(debrief?.where);
+      const nextStep = cleanDebriefText(debrief?.nextStep);
+      const notes = formatDebriefNotes({ where, nextStep });
 
       await persistState((prev) => {
         const forfeiture = calculateRelapseForfeiture(
@@ -383,12 +388,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
           timestamp: now,
           cleanDurationMs: forfeiture.forfeitedCleanDurationMs,
           trigger,
-          notes: notes?.trim() || undefined,
-          reflection: notes?.trim() || undefined,
+          notes,
+          reflection: nextStep || undefined,
           attemptNumber: prev.profile.attemptCount,
           forfeitedAura: forfeiture.forfeitedAura,
           moneyKept: receipt.moneyKept,
           minutesReclaimed: receipt.minutesReclaimed,
+          where: where || undefined,
+          nextStep: nextStep || undefined,
         };
 
         const updatedCircadian = { ...prev.circadianHistory };

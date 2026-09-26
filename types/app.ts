@@ -41,6 +41,10 @@ export interface RelapseRecord {
   readonly moneyKept?: number;
   /** Estimated minutes given back during the forfeited run. Absent on older records. */
   readonly minutesReclaimed?: number;
+  /** Where the slip happened. Absent on older records. */
+  readonly where?: string;
+  /** What the user will do next time. Absent on older records. */
+  readonly nextStep?: string;
 }
 
 /**
@@ -227,7 +231,9 @@ export function isRelapseRecord(raw: unknown): raw is RelapseRecord {
     !isNaN(r.forfeitedAura) &&
     (r.moneyKept === undefined || (typeof r.moneyKept === 'number' && !isNaN(r.moneyKept))) &&
     (r.minutesReclaimed === undefined ||
-      (typeof r.minutesReclaimed === 'number' && !isNaN(r.minutesReclaimed)))
+      (typeof r.minutesReclaimed === 'number' && !isNaN(r.minutesReclaimed))) &&
+    (r.where === undefined || typeof r.where === 'string') &&
+    (r.nextStep === undefined || typeof r.nextStep === 'string')
   );
 }
 

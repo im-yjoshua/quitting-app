@@ -8,6 +8,7 @@ import {
   ScrollView,
   Animated,
   Easing,
+  TextInput,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -81,7 +82,13 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
   const cleanDurationMs = calculateCleanDurationMs(now, startDate);
 
   const [selectedTrigger, setSelectedTrigger] = useState<RelapseTrigger>('late_night_bed_scrolling');
+  const [where, setWhere] = useState('');
+  const [nextStep, setNextStep] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+  const whereRef = useRef(where);
+  const nextStepRef = useRef(nextStep);
+  whereRef.current = where;
+  nextStepRef.current = nextStep;
 
   // 3-second solemn hold execution driver
   const holdProgress = useRef(new Animated.Value(0)).current;
@@ -115,7 +122,10 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
     holdTimeoutRef.current = setTimeout(async () => {
       setIsResetting(true);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      await recordRelapse(selectedTrigger);
+      await recordRelapse(selectedTrigger, {
+        where: whereRef.current,
+        nextStep: nextStepRef.current,
+      });
       setIsResetting(false);
       holdProgress.setValue(0);
       onClose();
@@ -265,6 +275,25 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
                 );
               })}
             </View>
+
+            <Text style={styles.triggerSectionTitle}>WHERE WERE YOU?</Text>
+            <TextInput
+              value={where}
+              onChangeText={setWhere}
+              placeholder="In bed, phone in hand"
+              placeholderTextColor={Palette.textSecondary}
+              maxLength={160}
+              style={styles.debriefInput}
+            />
+            <Text style={styles.triggerSectionTitle}>WHAT WILL YOU DO NEXT TIME?</Text>
+            <TextInput
+              value={nextStep}
+              onChangeText={setNextStep}
+              placeholder="Phone stays in the kitchen"
+              placeholderTextColor={Palette.textSecondary}
+              maxLength={160}
+              style={styles.debriefInput}
+            />
 
             {/* 3-Second Hold-to-Reset Trigger */}
             <View style={styles.holdTriggerWrapper}>
@@ -445,6 +474,16 @@ const styles = StyleSheet.create({
     ...Typography.kicker,
     color: Palette.textTertiary,
     marginBottom: Layout.spacing.sm,
+  },
+  debriefInput: {
+    borderWidth: 1,
+    borderColor: Palette.specularBorderSubtle,
+    borderRadius: Layout.radius.md,
+    color: Palette.textPrimary,
+    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: Layout.spacing.lg,
   },
   triggerList: {
     gap: 10,
