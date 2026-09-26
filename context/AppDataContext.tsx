@@ -13,10 +13,10 @@ import * as Haptics from 'expo-haptics';
 import {
   AppStateData,
   RelapseRecord,
+  InterventionDrillType,
   RelapseTrigger,
   AuraTier,
   HabitCategory,
-  InterventionDrillType,
   PurchasePlan,
   PurchaseState,
   SovereignEntitlement,
@@ -79,6 +79,7 @@ interface AppDataContextValue {
     debrief?: { where?: string; nextStep?: string }
   ) => Promise<void>;
   claimInterventionAura: (drillType: InterventionDrillType, auraAward?: number) => Promise<boolean>;
+  recordNearMiss: (trigger: RelapseTrigger, drillType: InterventionDrillType) => Promise<void>;
   claimChallengeAura: (challengeId: string, auraAward: number) => Promise<boolean>;
   completeCircadianRitual: (type: 'am' | 'pm') => Promise<boolean>;
   refreshState: () => Promise<void>;
@@ -115,6 +116,7 @@ const INTERVENTION_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes strict anti-explo
 import { calculateTier } from '../services/auraTiers';
 import { challengeAlreadyClaimedToday, circadianWindowAllows } from '../services/rewardRules';
 import { calculateCleanReceipt } from '../services/cleanReceipt';
+import { appendNearMiss, createNearMiss } from '../services/nearMiss';
 import { cleanDebriefText, formatDebriefNotes } from '../services/slipDebrief';
 
 // Monotonic per-session counter so relapse IDs are unique without randomness.
@@ -462,6 +464,17 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     [persistState]
   );
 
+  const recordNearMiss = useCallback(
+    async (trigger: RelapseTrigger, drillType: InterventionDrillType) => {
+      const record = createNearMiss(trigger, drillType, Date.now());
+      await persistState((prev) => ({
+        ...prev,
+        nearMisses: appendNearMiss(prev.nearMisses, record),
+      }));
+    },
+    [persistState]
+  );
+
   // Timed challenge completion claim
   const claimChallengeAura = useCallback(
     async (challengeId: string, auraAward: number): Promise<boolean> => {
@@ -702,6 +715,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       completeOnboarding,
       recordRelapse,
       claimInterventionAura,
+      recordNearMiss,
       claimChallengeAura,
       completeCircadianRitual,
       refreshState,
@@ -740,6 +754,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       completeOnboarding,
       recordRelapse,
       claimInterventionAura,
+      recordNearMiss,
       claimChallengeAura,
       completeCircadianRitual,
       refreshState,

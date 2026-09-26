@@ -11,6 +11,7 @@ import {
   StorageEnvelope,
   TelemetryExportPayload,
   isCircadianHistory,
+  isNearMissRecord,
   isRelapseRecord,
   isStorageEnvelope,
   isTelemetryExportPayload,
@@ -43,6 +44,7 @@ export const DEFAULT_APP_STATE: AppStateData = {
     biometricsEnabled: false,
   },
   relapseHistory: [],
+  nearMisses: [],
   interventionState: {
     lastCompletedAt: null,
     cooldownUntil: null,
@@ -85,6 +87,8 @@ function isAppStateData(raw: unknown): raw is AppStateData {
     isUserProfile(s.profile) &&
     Array.isArray(s.relapseHistory) &&
     s.relapseHistory.every(isRelapseRecord) &&
+    (s.nearMisses === undefined ||
+      (Array.isArray(s.nearMisses) && s.nearMisses.every(isNearMissRecord))) &&
     (lastCompletedAt === null ||
       (typeof lastCompletedAt === 'number' && !isNaN(lastCompletedAt))) &&
     (cooldownUntil === null ||
@@ -99,11 +103,11 @@ function isAppStateData(raw: unknown): raw is AppStateData {
  * converge here before being re-saved in the current format.
  */
 function migrateAppState(state: AppStateData, fromVersion: number): AppStateData {
-  // v1 -> v2: the envelope itself is the v2 format; the AppStateData shape did
-  // not change, so there is nothing to rewrite. Add versioned branches here
-  // when the shape changes in the future.
   void fromVersion;
-  return state;
+  return {
+    ...state,
+    nearMisses: state.nearMisses ?? [],
+  };
 }
 
 async function writeEnvelope(state: AppStateData): Promise<boolean> {

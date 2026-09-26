@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppData } from '../../context/AppDataContext';
 import { useNow } from '../../hooks/useNow';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
-import { InterventionDrillType } from '../../types/app';
+import { InterventionDrillType, RelapseTrigger } from '../../types/app';
 
 interface ImpulseNeutralizerModalProps {
   visible: boolean;
@@ -57,11 +57,20 @@ const SOMATIC_DRILLS: DrillOption[] = [
   },
 ];
 
+const NEAR_MISS_TRIGGERS: { id: RelapseTrigger; label: string }[] = [
+  { id: 'late_night_bed_scrolling', label: 'Late night' },
+  { id: 'boredom_isolation', label: 'Boredom' },
+  { id: 'stress_cortisol', label: 'Stress' },
+  { id: 'fatigue_burnout', label: 'Tired' },
+  { id: 'alcohol_substance_cross_trigger', label: 'A drink' },
+  { id: 'other', label: 'Something else' },
+];
+
 export const ImpulseNeutralizerModal: React.FC<ImpulseNeutralizerModalProps> = ({
   visible,
   onClose,
 }) => {
-  const { state, claimInterventionAura } = useAppData();
+  const { state, claimInterventionAura, recordNearMiss } = useAppData();
   const now = useNow(1000);
   const cooldownUntil = state.interventionState.cooldownUntil ?? 0;
   const interventionCooldownSeconds = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
@@ -71,6 +80,7 @@ export const ImpulseNeutralizerModal: React.FC<ImpulseNeutralizerModalProps> = (
   const [drillRunning, setDrillRunning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(SOMATIC_DRILLS[0].durationSeconds);
   const [drillCompleted, setDrillCompleted] = useState(false);
+  const [nearTrigger, setNearTrigger] = useState<RelapseTrigger | null>(null);
   const [isClaiming, setIsClaiming] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -127,13 +137,14 @@ export const ImpulseNeutralizerModal: React.FC<ImpulseNeutralizerModalProps> = (
   };
 
   const handleClaim = async () => {
-    if (!drillCompleted || !canClaimIntervention || isClaiming) return;
+    if (!drillCompleted || !nearTrigger || isClaiming) return;
     setIsClaiming(true);
-    const success = await claimInterventionAura(activeDrill.id, 25);
-    setIsClaiming(false);
-    if (success) {
-      onClose();
+    await recordNearMiss(nearTrigger, activeDrill.id);
+    if (canClaimIntervention) {
+      await claimInterventionAura(activeDrill.id, 25);
     }
+    setIsClaiming(false);
+    onClose();
   };
 
   const formatCooldown = (totalSec: number) => {
@@ -292,24 +303,48 @@ export const ImpulseNeutralizerModal: React.FC<ImpulseNeutralizerModalProps> = (
 
                 {/* Claim Aura Button (Only enabled upon verifiable elapsed time) */}
                 {drillCompleted && (
+                  <>
+                    <Text style={styles.sectionLabel}>WHAT ALMOST TRIGGERED IT?</Text>
+                    <View style={styles.nearMissRow}>
+                      {NEAR_MISS_TRIGGERS.map((item) => {
+                        const selected = nearTrigger === item.id;
+                        return (
+                          <TouchableOpacity
+                            key={item.id}
+                            activeOpacity={0.8}
+                            onPress={() => setNearTrigger(item.id)}
+                            style={[styles.nearMissChip, selected && styles.nearMissChipSelected]}
+                          >
+                            <Text style={[styles.nearMissChipText, selected && styles.nearMissChipTextSelected]}>
+                              {item.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   <TouchableOpacity
                     activeOpacity={0.85}
-                    disabled={!canClaimIntervention || isClaiming}
+                    disabled={!nearTrigger || isClaiming}
                     onPress={handleClaim}
                     style={[
                       styles.claimButton,
-                      !canClaimIntervention && styles.claimButtonDisabled,
+                      (!nearTrigger || !canClaimIntervention) && styles.claimButtonDisabled,
                     ]}
                   >
                     <LinearGradient
-                      colors={canClaimIntervention ? Palette.specularGradient : ['transparent', 'transparent']}
+                      colors={nearTrigger && canClaimIntervention ? Palette.specularGradient : ['transparent', 'transparent']}
                       style={styles.absoluteFill}
                     />
                     <Ionicons name="checkmark-circle" size={18} color={Palette.signalSuccess} style={{ marginRight: 6 }} />
                     <Text style={styles.claimButtonText}>
-                      {canClaimIntervention ? 'CLAIM +25 AURA REPUTATION' : 'DRILL CLEARED // COOLDOWN RESTRICTED'}
+                      {!nearTrigger
+                        ? 'PICK WHAT ALMOST HAPPENED'
+                        : canClaimIntervention
+                          ? 'SAVE AND CLAIM +25 AURA'
+                          : 'SAVE AND CLOSE'}
                     </Text>
                   </TouchableOpacity>
+                  </>
                 )}
               </BlurView>
             </View>
@@ -411,6 +446,30 @@ const styles = StyleSheet.create({
     ...Typography.kicker,
     color: Palette.textTertiary,
     marginBottom: Layout.spacing.sm,
+  },
+  nearMissRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: Layout.spacing.md,
+  },
+  nearMissChip: {
+    borderWidth: 1,
+    borderColor: Palette.specularBorderSubtle,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  nearMissChipSelected: {
+    borderColor: Palette.signalSuccess,
+  },
+  nearMissChipText: {
+    color: Palette.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  nearMissChipTextSelected: {
+    color: Palette.textPrimary,
   },
   drillSelectorRow: {
     flexDirection: 'row',

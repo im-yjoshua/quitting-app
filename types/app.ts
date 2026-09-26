@@ -89,6 +89,14 @@ export interface UrgeInterventionState {
   cooldownUntil: number | null;
 }
 
+/** An urge that was faced and not a slip. It does not reset the streak. */
+export interface NearMissRecord {
+  readonly id: string;
+  readonly timestamp: number;
+  readonly trigger: RelapseTrigger;
+  readonly drillType: InterventionDrillType;
+}
+
 /**
  * Circadian day record tracking morning (AM) and evening (PM) ritual completion.
  */
@@ -128,6 +136,8 @@ export interface TimedChallenge {
 export interface AppStateData {
   profile: UserProfile;
   relapseHistory: RelapseRecord[];
+  /** Urges that were faced. Optional so v1 payloads still load. */
+  nearMisses?: NearMissRecord[];
   interventionState: UrgeInterventionState;
   circadianHistory: CircadianHistory;
   activeChallengeId: string | null;
@@ -212,6 +222,18 @@ export function isUserProfile(raw: unknown): raw is UserProfile {
     (p.tierStatus === 'Initiate' || p.tierStatus === 'Sentinel' || p.tierStatus === 'Sovereign') &&
     typeof p.isOnboarded === 'boolean' &&
     typeof p.biometricsEnabled === 'boolean'
+  );
+}
+
+export function isNearMissRecord(raw: unknown): raw is NearMissRecord {
+  if (!raw || typeof raw !== 'object') return false;
+  const r = raw as Partial<NearMissRecord>;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.timestamp === 'number' &&
+    !isNaN(r.timestamp) &&
+    typeof r.trigger === 'string' &&
+    typeof r.drillType === 'string'
   );
 }
 

@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { BEAT_URGE_ACTION } from './urgeEntry';
 
 // Configure on-device notification presentation behavior
 Notifications.setNotificationHandler({
@@ -12,7 +13,22 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export const DAILY_ENCOURAGEMENT_IDENTIFIER = 'sovereign_daily_encouragement';
+export const DAILY_ENCOURAGEMENT_IDENTIFIER = 'sovereign_daily_encouragement_v2';
+const LEGACY_DAILY_ENCOURAGEMENT_IDENTIFIER = 'sovereign_daily_encouragement';
+
+export async function ensureUrgeNotificationCategory(): Promise<void> {
+  try {
+    await Notifications.setNotificationCategoryAsync(BEAT_URGE_ACTION, [
+      {
+        identifier: BEAT_URGE_ACTION,
+        buttonTitle: 'Beat the urge',
+        options: { opensAppToForeground: true },
+      },
+    ]);
+  } catch (error) {
+    console.warn('Failed to register the urge notification action:', error);
+  }
+}
 
 /**
  * Request local push notification permissions securely on-device.
@@ -81,9 +97,10 @@ export async function scheduleDailyCheckIn(
       return null;
     }
 
-    // Idempotent: if the daily check-in is already scheduled (from onboarding or a
-    // previous launch), keep it. We never cancel-and-reschedule here — the old
-    // blind cancelAll wiped the user's 3/day cadence protocol on every launch.
+    await ensureUrgeNotificationCategory();
+    await cancelScheduledNotification(LEGACY_DAILY_ENCOURAGEMENT_IDENTIFIER);
+
+    // Idempotent: if this version is already scheduled, keep it.
     if (await isNotificationScheduled(DAILY_ENCOURAGEMENT_IDENTIFIER)) {
       return DAILY_ENCOURAGEMENT_IDENTIFIER;
     }
@@ -94,6 +111,7 @@ export async function scheduleDailyCheckIn(
         title: 'Sovereign Check-In',
         body: 'Hold the line today.',
         sound: true,
+        categoryIdentifier: BEAT_URGE_ACTION,
         data: {
           type: 'daily_encouragement',
           scheduledAt: Date.now(),
