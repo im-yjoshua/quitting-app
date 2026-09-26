@@ -39,6 +39,7 @@ import { startEmergencySession } from '@/services/commitments';
 import { recordEmergencySession } from '@/services/analyticsService';
 import { useNow } from '@/hooks/useNow';
 import { calculateCleanDurationMs } from '@/services/chronometerEngine';
+import { calculateCleanReceipt, formatMinutesReclaimed, formatMoneyKept } from '@/services/cleanReceipt';
 
 export default function CommandDashboardScreen() {
   const { refreshState, state, openPaywall } = useAppData();
@@ -99,6 +100,11 @@ export default function CommandDashboardScreen() {
   const currentDay = Math.max(
     1,
     Math.floor(calculateCleanDurationMs(now, state.profile.startDate) / (24 * 60 * 60 * 1000)) + 1
+  );
+  const receipt = calculateCleanReceipt(
+    calculateCleanDurationMs(now, state.profile.startDate),
+    state.profile.weeklyCostEstimated,
+    state.profile.dailyMinutesWasted
   );
 
   return (
@@ -272,6 +278,19 @@ export default function CommandDashboardScreen() {
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>CURRENT TRY</Text>
                 <Text style={[styles.statValue, { color: colors.textPrimary }]}>Attempt #{attemptCount}</Text>
                 <Text style={styles.statSub}>Active Streak</Text>
+              </View>
+            </View>
+            <View style={[styles.statsGrid, styles.receiptGrid, { backgroundColor: colors.glassSubtle, borderColor: colors.border }]}>
+              <View style={styles.statCard}>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>KEPT</Text>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{formatMoneyKept(receipt.moneyKept)}</Text>
+                <Text style={styles.statSub}>Not spent</Text>
+              </View>
+              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.statCard}>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>TIME BACK</Text>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{formatMinutesReclaimed(receipt.minutesReclaimed)}</Text>
+                <Text style={styles.statSub}>From your estimate</Text>
               </View>
             </View>
           </View>
@@ -471,6 +490,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     paddingVertical: 14,
     paddingHorizontal: 12,
+  },
+  receiptGrid: {
+    marginTop: 8,
   },
   statCard: {
     flex: 1,
