@@ -32,7 +32,7 @@ export const DEFAULT_APP_STATE: AppStateData = {
   profile: {
     habitTitle: 'Digital Freedom',
     habitCategory: 'digital_distraction',
-    startDate: Date.now(),
+    startDate: 0,
     bestRecordMs: 0,
     attemptCount: 1,
     weeklyCostEstimated: 0,

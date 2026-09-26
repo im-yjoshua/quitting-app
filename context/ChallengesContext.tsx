@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { getLocalDateKey } from '../services/chronometerEngine';
+import { loadEnvelopedObject, saveEnvelopedObject } from '../services/storage';
 import { TIERS, resolveChallengeTier } from '../services/challengeTiers';
-// Re-exported so any existing importer of the context module keeps working.
 export { TIERS, resolveChallengeTier };
 
 const STORAGE_KEY = '@sovereign/challenges_data';
+const MIN_WORKOUT_MINUTES = 10;
+const MAX_WORKOUTS_PER_DAY = 2;
 
 export interface DailyQuest {
   id: string;
@@ -29,6 +30,8 @@ interface ChallengesData {
   lastResetDate: string;
   dailyQuests: DailyQuest[];
   sideChallenges: SideChallenge[];
+  lastWorkoutDate: string;
+  workoutsLoggedToday: number;
 }
 
 const DEFAULT_QUESTS: DailyQuest[] = [
@@ -48,14 +51,66 @@ const DEFAULT_DATA: ChallengesData = {
   lastResetDate: '',
   dailyQuests: DEFAULT_QUESTS,
   sideChallenges: DEFAULT_SIDE_CHALLENGES,
+  lastWorkoutDate: '',
+  workoutsLoggedToday: 0,
 };
+
+function isDailyQuest(raw: unknown): raw is DailyQuest {
+  if (!raw || typeof raw !== 'object') return false;
+  const q = raw as Partial<DailyQuest>;
+  return (
+    typeof q.id === 'string' &&
+    (q.category === 'Physical' || q.category === 'Mind' || q.category === 'Discipline') &&
+    typeof q.title === 'string' &&
+    typeof q.completed === 'boolean'
+  );
+}
+
+function isSideChallenge(raw: unknown): raw is SideChallenge {
+  if (!raw || typeof raw !== 'object') return false;
+  const c = raw as Partial<SideChallenge>;
+  return (
+    typeof c.id === 'string' &&
+    typeof c.title === 'string' &&
+    typeof c.totalDays === 'number' &&
+    typeof c.currentDay === 'number' &&
+    typeof c.completed === 'boolean'
+  );
+}
+
+function isChallengesData(raw: unknown): raw is ChallengesData {
+  if (!raw || typeof raw !== 'object') return false;
+  const d = raw as Partial<ChallengesData>;
+  return (
+    typeof d.xp === 'number' &&
+    !isNaN(d.xp) &&
+    typeof d.lastResetDate === 'string' &&
+    Array.isArray(d.dailyQuests) &&
+    d.dailyQuests.every(isDailyQuest) &&
+    Array.isArray(d.sideChallenges) &&
+    d.sideChallenges.every(isSideChallenge)
+  );
+}
+
+function normalizeChallenges(data: ChallengesData, today: string): ChallengesData {
+  const resetDay = data.lastResetDate !== today;
+  const workoutDay = data.lastWorkoutDate !== today;
+  return {
+    ...data,
+    dailyQuests: resetDay || !data.dailyQuests?.length ? DEFAULT_QUESTS : data.dailyQuests,
+    sideChallenges: data.sideChallenges?.length ? data.sideChallenges : DEFAULT_SIDE_CHALLENGES,
+    lastResetDate: today,
+    lastWorkoutDate: today,
+    workoutsLoggedToday: resetDay || workoutDay ? 0 : data.workoutsLoggedToday ?? 0,
+  };
+}
 
 interface ChallengesContextType {
   data: ChallengesData;
   currentTier: typeof TIERS[0];
   nextTier: typeof TIERS[0] | null;
   completeDailyQuest: (id: string) => Promise<void>;
-  logWorkout: (type: string, duration: number) => Promise<void>;
+  logWorkout: (type: string, duration: number) => Promise<boolean>;
   progressSideChallenge: (id: string) => Promise<void>;
 }
 
@@ -63,11 +118,7 @@ const ChallengesContext = createContext<ChallengesContextType | undefined>(undef
 
 export function ChallengesProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<ChallengesData>(DEFAULT_DATA);
-  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Mutable mirror of the latest committed data + serialized persist queue.
-  // Same stale-closure protection as AppDataContext: concurrent actions (quest
-  // complete + XP award) can never overwrite each other.
   const dataRef = useRef<ChallengesData>(DEFAULT_DATA);
   const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -77,48 +128,42 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
       dataRef.current = next;
       setData(next);
       const write = persistQueueRef.current.then(() =>
-        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+        saveEnvelopedObject(STORAGE_KEY, isChallengesData, next)
       );
-      persistQueueRef.current = write.catch((err) => {
-        console.warn('[ChallengesContext] Failed to persist challenges data:', err);
-      });
+      persistQueueRef.current = write.then(
+        () => undefined,
+        (err: unknown) => {
+          console.warn('[ChallengesContext] Failed to persist challenges data:', err);
+        }
+      );
       await write;
     },
     []
   );
 
   useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      let parsed: ChallengesData = stored ? JSON.parse(stored) : DEFAULT_DATA;
-
-      const today = getLocalDateKey(Date.now());
-      if (parsed.lastResetDate !== today) {
-        // Reset daily quests
-        parsed.dailyQuests = DEFAULT_QUESTS;
-        parsed.lastResetDate = today;
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const loaded = await loadEnvelopedObject(STORAGE_KEY, isChallengesData);
+        const today = getLocalDateKey(Date.now());
+        const base = loaded.object ?? DEFAULT_DATA;
+        const parsed = normalizeChallenges(base, today);
+        if (cancelled) return;
+        dataRef.current = parsed;
+        setData(parsed);
+        if (loaded.status !== 'ok' || loaded.object?.lastResetDate !== today) {
+          await saveEnvelopedObject(STORAGE_KEY, isChallengesData, parsed);
+        }
+      } catch (err) {
+        console.warn('Failed to load challenges data', err);
       }
-
-      // Ensure schema syncs if we add new quests/challenges in code
-      if (!parsed.dailyQuests || parsed.dailyQuests.length === 0) parsed.dailyQuests = DEFAULT_QUESTS;
-      if (!parsed.sideChallenges || parsed.sideChallenges.length === 0) parsed.sideChallenges = DEFAULT_SIDE_CHALLENGES;
-
-      dataRef.current = parsed;
-      setData(parsed);
-      setIsLoaded(true);
-      if (stored !== JSON.stringify(parsed)) {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-      }
-    } catch (err) {
-      console.warn('Failed to load challenges data', err);
-      setIsLoaded(true);
     }
-  };
+    void loadData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const addXp = async (amount: number) => {
     await persistData((prev) => ({ ...prev, xp: prev.xp + amount }));
@@ -138,9 +183,28 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
     }));
   };
 
-  const logWorkout = async (type: string, duration: number) => {
+  const logWorkout = async (type: string, duration: number): Promise<boolean> => {
+    if (!type || !Number.isFinite(duration) || duration < MIN_WORKOUT_MINUTES) {
+      return false;
+    }
+    const today = getLocalDateKey(Date.now());
+    const current = dataRef.current;
+    const loggedToday =
+      current.lastWorkoutDate === today ? current.workoutsLoggedToday : 0;
+    if (loggedToday >= MAX_WORKOUTS_PER_DAY) return false;
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await addXp(50);
+    await persistData((prev) => {
+      const count = prev.lastWorkoutDate === today ? prev.workoutsLoggedToday : 0;
+      if (count >= MAX_WORKOUTS_PER_DAY) return prev;
+      return {
+        ...prev,
+        xp: prev.xp + 50,
+        lastWorkoutDate: today,
+        workoutsLoggedToday: count + 1,
+      };
+    });
+    return true;
   };
 
   const progressSideChallenge = async (id: string) => {
@@ -167,8 +231,6 @@ export function ChallengesProvider({ children }: { children: React.ReactNode }) 
 
   // Tiers resolved through the single source of truth above.
   const { currentTier, nextTier } = resolveChallengeTier(data.xp);
-
-  if (!isLoaded) return null;
 
   return (
     <ChallengesContext.Provider value={{ data, currentTier, nextTier, completeDailyQuest, logWorkout, progressSideChallenge }}>

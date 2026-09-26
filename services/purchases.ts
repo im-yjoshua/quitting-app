@@ -31,7 +31,7 @@ export const DEFAULT_ENTITLEMENT: SovereignEntitlement = {
 };
 
 let isConfigured = false;
-let isConfiguring = false;
+let configureInFlight: Promise<boolean> | null = null;
 
 /**
  * Reads local cached entitlement snapshot from AsyncStorage for zero-latency,
@@ -116,60 +116,59 @@ export async function getTrustedOfflineEntitlement(): Promise<SovereignEntitleme
  * without active store capabilities.
  */
 export async function initializePurchases(): Promise<boolean> {
-  if (isConfigured || isConfiguring) return isConfigured;
-  isConfiguring = true;
+  if (isConfigured) return true;
+  if (configureInFlight) return configureInFlight;
 
-  try {
-    const isExpoGo =
-      Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-      Constants.appOwnership === AppOwnership.Expo ||
-      Constants.appOwnership === 'expo';
+  configureInFlight = (async () => {
+    try {
+      const isExpoGo =
+        Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+        Constants.appOwnership === AppOwnership.Expo ||
+        Constants.appOwnership === 'expo';
 
-    const testKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
-    const appleKey = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY;
-    const googleKey = process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY;
+      const testKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
+      const appleKey = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY;
+      const googleKey = process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY;
 
-    let apiKey: string | undefined;
+      let apiKey: string | undefined;
 
-    if (isExpoGo) {
-      // In Expo Go, native StoreKit/Play Store is unavailable. Only RevenueCat Test Store keys (test_*) work.
-      if (testKey && testKey.startsWith('test_')) {
-        apiKey = testKey;
+      if (isExpoGo) {
+        if (testKey && testKey.startsWith('test_')) {
+          apiKey = testKey;
+        } else {
+          console.log('[Purchases] Expo Go detected without Test Store key. Operating in offline simulated entitlement mode.');
+          isConfigured = false;
+          return false;
+        }
       } else {
-        // Gracefully operate in offline simulated sandbox mode without triggering native StoreKit errors
-        console.log('[Purchases] Expo Go detected without Test Store key. Operating in offline simulated entitlement mode.');
+        apiKey = Platform.OS === 'ios' ? appleKey : googleKey;
+      }
+
+      if (!apiKey || apiKey.includes('placeholder')) {
+        console.log('[Purchases] RevenueCat API key not configured. Operating in offline simulated entitlement mode.');
         isConfigured = false;
         return false;
       }
-    } else {
-      apiKey = Platform.OS === 'ios' ? appleKey : googleKey;
-    }
 
-    if (!apiKey || apiKey.includes('placeholder')) {
-      console.log('[Purchases] RevenueCat API key not configured. Operating in offline simulated entitlement mode.');
+      if (__DEV__) {
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+      } else {
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.INFO);
+      }
+
+      await Purchases.configure({ apiKey });
+      isConfigured = true;
+      return true;
+    } catch (error) {
+      console.warn('[Purchases] RevenueCat native initialization deferred/unlinked:', error);
       isConfigured = false;
       return false;
+    } finally {
+      configureInFlight = null;
     }
+  })();
 
-    // Set non-verbose logging in production, info in dev
-    if (__DEV__) {
-      Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
-    } else {
-      Purchases.setLogLevel(Purchases.LOG_LEVEL.INFO);
-    }
-
-    // Configure RevenueCat instance
-    await Purchases.configure({ apiKey });
-    isConfigured = true;
-    return true;
-  } catch (error) {
-    // In simulator, Expo Go, or test runners, native StoreKit bindings may not be wired.
-    console.warn('[Purchases] RevenueCat native initialization deferred/unlinked:', error);
-    isConfigured = false;
-    return false;
-  } finally {
-    isConfiguring = false;
-  }
+  return configureInFlight;
 }
 
 /**
@@ -310,7 +309,7 @@ export async function purchaseProduct(plan: PurchasePlan): Promise<PurchaseResul
     } else if (error.code === PURCHASES_ERROR_CODE.NETWORK_ERROR) {
       errorMessage = 'Connection interrupted. Verify your network connection and retry.';
     } else if (error.code === PURCHASES_ERROR_CODE.PRODUCT_ALREADY_PURCHASED_ERROR) {
-      errorMessage = 'Pass is already owned on this Apple ID. Restoring purchases...';
+      errorMessage = 'Pass is already owned on this store account. Restoring purchases...';
       const restoreRes = await restorePurchasesWithoutPrompt();
       return restoreRes;
     } else if (error.message) {
@@ -411,7 +410,7 @@ export async function restorePurchasesWithBiometrics(): Promise<RestoreResult> {
     return {
       success: true,
       restored: false,
-      message: 'No active Sovereign purchase found for this Apple ID.',
+      message: 'No active Sovereign purchase found for this store account.',
     };
   } catch (error: unknown) {
     const err = error as Error;

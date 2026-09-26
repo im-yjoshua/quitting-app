@@ -18,8 +18,10 @@ export function WorkoutLoggerModal() {
   const types = ['Strength', 'Cardio', 'Mobility', 'Calisthenics'];
 
   const handleLog = async () => {
-    if (!duration) return;
-    await logWorkout(selectedType, parseInt(duration, 10));
+    const minutes = parseInt(duration, 10);
+    if (!Number.isFinite(minutes) || minutes < 10) return;
+    const logged = await logWorkout(selectedType, minutes);
+    if (!logged) return;
     setDuration('');
     setVisible(false);
   };

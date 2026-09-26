@@ -72,9 +72,9 @@ export async function authenticateLocalOwner(
     // If device has zero security credentials enrolled (no biometrics, no PIN, no passcode)
     if (enrolledLevel === LocalAuthentication.SecurityLevel.NONE && !isEnrolled) {
       console.warn(
-        '[Biometrics] Zero security credentials enrolled on device (no Face ID, Touch ID, or passcode). Operating in unconstrained enclave mode.'
+        '[Biometrics] No credentials enrolled. Refusing to unlock.'
       );
-      return true;
+      return false;
     }
 
     const result = await LocalAuthentication.authenticateAsync({
@@ -85,13 +85,6 @@ export async function authenticateLocalOwner(
     });
 
     if (!result.success) {
-      // In case of an un-enrolled device returning not_enrolled error
-      if (result.error === 'not_enrolled' || result.error === 'passcode_not_set') {
-        console.warn(
-          `[Biometrics] Device security not configured (${result.error}). Bypassing hardware gate.`
-        );
-        return true;
-      }
       return false;
     }
 
