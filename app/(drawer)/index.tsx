@@ -40,6 +40,7 @@ import { recordEmergencySession } from '@/services/analyticsService';
 import { useNow } from '@/hooks/useNow';
 import { calculateCleanDurationMs } from '@/services/chronometerEngine';
 import { calculateCleanReceipt, formatMinutesReclaimed, formatMoneyKept } from '@/services/cleanReceipt';
+import { pinnedSlipDebrief } from '@/services/slipDebrief';
 
 export default function CommandDashboardScreen() {
   const { refreshState, state, openPaywall } = useAppData();
@@ -106,6 +107,7 @@ export default function CommandDashboardScreen() {
     state.profile.weeklyCostEstimated,
     state.profile.dailyMinutesWasted
   );
+  const debrief = pinnedSlipDebrief(state.relapseHistory, Date.now());
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.canvas }]} edges={['top', 'left', 'right']}>
@@ -195,6 +197,17 @@ export default function CommandDashboardScreen() {
             />
           }
         >
+          {debrief && (
+            <View style={[styles.debriefPin, { backgroundColor: colors.glassSubtle, borderColor: colors.border }]}>
+              <Text style={[styles.statsSectionHeader, { color: colors.textSecondary }]}>NEXT ATTEMPT</Text>
+              {!!debrief.where && (
+                <Text style={[styles.debriefLine, { color: colors.textPrimary }]}>Where: {debrief.where}</Text>
+              )}
+              {!!debrief.nextStep && (
+                <Text style={[styles.debriefLine, { color: colors.textPrimary }]}>Next time: {debrief.nextStep}</Text>
+              )}
+            </View>
+          )}
           {/* Apple Fitness-Style Concentric Activity Rings */}
           <View style={styles.chronometerSection}>
             <SleekChronometer />
@@ -400,6 +413,22 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 120,
     alignItems: 'center',
+  },
+  debriefPin: {
+    width: '90%',
+    maxWidth: 360,
+    alignSelf: 'center',
+    borderRadius: 18,
+    borderWidth: 0.5,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    marginBottom: 8,
+  },
+  debriefLine: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
   },
   chronometerSection: {
     alignItems: 'center',
