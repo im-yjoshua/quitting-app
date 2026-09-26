@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppData } from '../../context/AppDataContext';
+import { useNow } from '../../hooks/useNow';
 import { Palette, Typography, Layout, GlassBlur, Shadows } from '../../constants/theme';
 import { InterventionDrillType } from '../../types/app';
 
@@ -60,7 +61,11 @@ export const ImpulseNeutralizerModal: React.FC<ImpulseNeutralizerModalProps> = (
   visible,
   onClose,
 }) => {
-  const { canClaimIntervention, interventionCooldownSeconds, claimInterventionAura } = useAppData();
+  const { state, claimInterventionAura } = useAppData();
+  const now = useNow(1000);
+  const cooldownUntil = state.interventionState.cooldownUntil ?? 0;
+  const interventionCooldownSeconds = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+  const canClaimIntervention = interventionCooldownSeconds === 0;
 
   const [activeDrill, setActiveDrill] = useState<DrillOption>(SOMATIC_DRILLS[0]);
   const [drillRunning, setDrillRunning] = useState(false);

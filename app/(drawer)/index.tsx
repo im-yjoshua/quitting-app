@@ -37,9 +37,12 @@ import { BreathingSphereModal } from '@/components/dashboard/BreathingSphereModa
 import { EmergencyModal } from '@/components/EmergencyModal';
 import { startEmergencySession } from '@/services/commitments';
 import { recordEmergencySession } from '@/services/analyticsService';
+import { useNow } from '@/hooks/useNow';
+import { calculateCleanDurationMs } from '@/services/chronometerEngine';
 
 export default function CommandDashboardScreen() {
-  const { refreshState, state, cleanDurationMs, openPaywall } = useAppData();
+  const { refreshState, state, openPaywall } = useAppData();
+  const now = useNow(60_000);
   const { colors, theme } = useAppTheme();
   const { bestRecordMs, attemptCount } = state.profile;
   const { modal } = useLocalSearchParams<{ modal?: string }>();
@@ -93,7 +96,10 @@ export default function CommandDashboardScreen() {
     return `${days}d ${hours}h`;
   };
 
-  const currentDay = Math.max(1, Math.floor(cleanDurationMs / (24 * 60 * 60 * 1000)) + 1);
+  const currentDay = Math.max(
+    1,
+    Math.floor(calculateCleanDurationMs(now, state.profile.startDate) / (24 * 60 * 60 * 1000)) + 1
+  );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.canvas }]} edges={['top', 'left', 'right']}>

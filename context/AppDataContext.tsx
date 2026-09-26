@@ -110,6 +110,7 @@ const AppDataContext = createContext<AppDataContextValue | null>(null);
 const INTERVENTION_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes strict anti-exploit window
 
 import { calculateTier } from '../services/auraTiers';
+import { challengeAlreadyClaimedToday, circadianWindowAllows } from '../services/rewardRules';
 
 // Monotonic per-session counter so relapse IDs are unique without randomness.
 // Combined with the millisecond timestamp, IDs are unique across sessions too.
@@ -118,7 +119,9 @@ let relapseIdCounter = 0;
 export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppStateData>(DEFAULT_APP_STATE);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(Date.now());
+  // Bumped when the app returns to the foreground so derived durations refresh.
+  // The 1s clock lives in useNow(), not here — a provider tick rerenders every screen.
+  const [resumedAt, setResumedAt] = useState(Date.now());
   const [entitlement, setEntitlement] = useState<SovereignEntitlement>(DEFAULT_ENTITLEMENT);
   const [purchaseState, setPurchaseState] = useState<PurchaseState>('idle');
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
@@ -137,19 +140,11 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // Re-synchronize clock immediately to prevent timer drift
   const syncCurrentTime = useCallback(() => {
-    setCurrentTime(Date.now());
+    setResumedAt(Date.now());
   }, []);
 
-  // Second-ticker reference for derived durations and cooldowns
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // AppState listener: Instantly synchronize chronometer upon returning from background/sleep
-  // and synchronously flush write queue to disk when app transitions to background or inactive
+  // AppState listener: refresh durations when returning from background, and
+  // flush the write queue when the app leaves the foreground.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
@@ -240,8 +235,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // Pure derived clean duration from epoch timestamps with millisecond precision
   const cleanDurationMs = useMemo(() => {
-    return calculateCleanDurationMs(currentTime, state.profile.startDate);
-  }, [currentTime, state.profile.startDate]);
+    return calculateCleanDurationMs(resumedAt, state.profile.startDate);
+  }, [resumedAt, state.profile.startDate]);
 
   // Pure concentric dial metrics (24h diurnal, 7d surge, 90d receptor recovery)
   const concentricDialMetrics = useMemo(() => {
@@ -254,9 +249,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       cleanDurationMs,
       state.profile.startDate,
       state.circadianHistory,
-      currentTime
+      resumedAt
     );
-  }, [cleanDurationMs, state.profile.startDate, state.circadianHistory, currentTime]);
+  }, [cleanDurationMs, state.profile.startDate, state.circadianHistory, resumedAt]);
 
   const effectiveStreakDurationMs = streakTelemetry.effectiveDurationMs;
   const todayMultiplierActive = streakTelemetry.todayMultiplierActive;
@@ -269,9 +264,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Derived cooldown status for Urge Neutralizer
   const cooldownUntil = state.interventionState.cooldownUntil ?? 0;
   const interventionCooldownSeconds = useMemo(() => {
-    const remainingMs = cooldownUntil - currentTime;
+    const remainingMs = cooldownUntil - resumedAt;
     return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
-  }, [cooldownUntil, currentTime]);
+  }, [cooldownUntil, resumedAt]);
 
   const canClaimIntervention = interventionCooldownSeconds === 0;
 
@@ -455,8 +450,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Timed challenge completion claim
   const claimChallengeAura = useCallback(
     async (challengeId: string, auraAward: number): Promise<boolean> => {
-      const today = getLocalDateKey(Date.now());
-      if ((stateRef.current.challengeClaims ?? {})[challengeId] === today) {
+      const now = Date.now();
+      const today = getLocalDateKey(now);
+      if (challengeAlreadyClaimedToday(stateRef.current.challengeClaims, challengeId, now)) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         return false;
       }
@@ -464,7 +460,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       let awarded = false;
       await persistState((prev) => {
         const claims = prev.challengeClaims ?? {};
-        if (claims[challengeId] === today) return prev;
+        if (challengeAlreadyClaimedToday(claims, challengeId, now)) return prev;
         awarded = true;
         const nextAura = prev.profile.auraScore + auraAward;
         return {
@@ -488,9 +484,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   const completeCircadianRitual = useCallback(
     async (type: 'am' | 'pm'): Promise<boolean> => {
       const now = Date.now();
-      const hour = new Date(now).getHours();
-      if (type === 'am' && hour >= 12) return false;
-      if (type === 'pm' && hour < 12) return false;
+      if (!circadianWindowAllows(type, now)) return false;
 
       const today = getLocalDateKey(now);
       const existing = stateRef.current.circadianHistory[today];

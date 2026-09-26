@@ -15,7 +15,8 @@ import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-na
 import * as Haptics from 'expo-haptics';
 import { useAppData } from '../../context/AppDataContext';
 import { useAppTheme } from '../../context/ThemeContext';
-import { breakDownDuration, calculateConcentricDialMetrics } from '../../services/chronometerEngine';
+import { useNow } from '../../hooks/useNow';
+import { breakDownDuration, calculateCleanDurationMs, calculateConcentricDialMetrics } from '../../services/chronometerEngine';
 
 interface SleekChronometerProps {
   customDurationMs?: number;
@@ -43,13 +44,13 @@ const C_MID = 2 * Math.PI * R_MID;
 const C_INNER = 2 * Math.PI * R_INNER;
 
 export const SleekChronometer: React.FC<SleekChronometerProps> = ({ customDurationMs }) => {
-  const { cleanDurationMs, concentricDialMetrics } = useAppData();
+  const { state } = useAppData();
+  const now = useNow(1000);
   const { colors, theme } = useAppTheme();
+  const cleanDurationMs = calculateCleanDurationMs(now, state.profile.startDate);
   const activeDuration = customDurationMs ?? cleanDurationMs;
 
-  const activeDials = customDurationMs !== undefined
-    ? calculateConcentricDialMetrics(customDurationMs)
-    : concentricDialMetrics;
+  const activeDials = calculateConcentricDialMetrics(activeDuration);
 
   // Daily (24h), Weekly (7d), and 90-Day timelines
   const p24h = Math.min(1, Math.max(0, activeDials.cycle24h.progress));
